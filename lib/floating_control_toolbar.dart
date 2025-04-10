@@ -28,6 +28,9 @@ extension LiveActionExtension on LiveAction {
         return 'More';
     }
   }
+  String get key {
+    return displayName;
+  }
 }
 
 extension SettleActionExtension on SettleAction {
@@ -38,6 +41,9 @@ extension SettleActionExtension on SettleAction {
       case SettleAction.setTarget:
         return 'Set Target';
     }
+  }
+  String get key {
+    return displayName;
   }
 }
 
@@ -54,18 +60,30 @@ extension ExecuteActionExtension on ExecuteAction {
         return 'Cancel';
     }
   }
+  String get key {
+    switch (this) {
+      case ExecuteAction.start:
+      case ExecuteAction.cancel:
+        return 'Start';
+      case ExecuteAction.pause:
+      case ExecuteAction.resume:
+        return 'Pause';
+    }
+  }
 }
 
 // ------------------ 按钮模型 ------------------
 class ControlButtonConfig {
   final IconData icon;
   final String label;
+  final String key;
   final VoidCallback onTap;
   final AutoDisposeProvider<bool> visibleProvider;
 
   ControlButtonConfig({
     required this.icon,
     required this.label,
+    required this.key,
     required this.onTap,
     required this.visibleProvider,
   });
@@ -109,6 +127,7 @@ ControlButtonConfig _buildLiveButton(Ref ref, LiveAction action) {
   return ControlButtonConfig(
     icon: icon,
     label: action.displayName,
+    key: action.key,
     onTap: () => debugPrint('Live action tapped: ${action.displayName}'),
     visibleProvider: Provider.autoDispose((_) => true),
   );
@@ -123,6 +142,7 @@ ControlButtonConfig _buildSettleButton(Ref ref, SettleAction action) {
   return ControlButtonConfig(
     icon: icon,
     label: action.displayName,
+    key: action.key,
     onTap: () {},
     visibleProvider: Provider.autoDispose((_) => true),
   );
@@ -176,6 +196,7 @@ List<ControlButtonConfig> _buildExecuteButtons(Ref ref, ExecuteState state) {
     return ControlButtonConfig(
       icon: icon,
       label: entry.key.displayName,
+      key: entry.key.key,
       onTap: () => entry.value(),
       visibleProvider:
           Provider.autoDispose((_) => visibleMap[entry.key] ?? false),
@@ -193,55 +214,96 @@ class SectionWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final buttons = ref.watch(sectionButtonsProvider(sectionType));
 
-    // 使用 AnimatedSize 包裹 Row，使得 Section 内部尺寸变化也带动画
+    // 1. 过滤出当前可见的按钮
+    final visibleButtons = buttons.where((btn) {
+      // 注意：这里用 read 而不是 watch，避免 AnimatedSwitcher 内部不必要的重绘
+      // visibleProvider 变化会触发 SectionWidget 重建，从而重新计算 visibleButtons
+      return ref.read(btn.visibleProvider);
+    }).toList();
+
+    // 2. 基于可见按钮生成 Row 的 Key
+    final rowKey = ValueKey(visibleButtons.map((btn) => btn.key).join(','));
+
+    // 3. 构建只包含可见按钮的 Row
+    final rowChild = Row(
+      key: rowKey, // 使用动态 Key
+      mainAxisSize: MainAxisSize.min,
+      children: visibleButtons.map((btn) {
+        // 直接构建 InkWell，不再需要内部 AnimatedSwitcher
+        return InkWell(
+          key: ValueKey(btn.key), // 仍然需要 Key
+          onTap: btn.onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 46),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(btn.icon, size: 24),
+                  Text(btn.label, style: TextStyle(fontSize: 12))
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+
+    // 4. AnimatedSize 包裹 AnimatedSwitcher，AnimatedSwitcher 包裹 Row
     return AnimatedSize(
-      duration: const Duration(milliseconds: 300), // 内部动画可以快一些
-      curve: Curves.linear,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: buttons.map((btn) {
-          final visible = ref.watch(btn.visibleProvider);
-          // 使用 AnimatedSwitcher 为按钮添加淡入淡出效果
-          return AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200), // 匹配 AnimatedSize
-            transitionBuilder: (Widget child, Animation<double> animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: SizeTransition(
-                  // 添加尺寸过渡
-                  sizeFactor: animation,
-                  axis: Axis.horizontal, // 水平方向尺寸变化
-                  child: child,
-                ),
-              );
-            },
-            child: visible
-                ? InkWell(
-                    // 使用唯一的 Key 很重要
-                    key: ValueKey(btn.label),
-                    onTap: btn.onTap,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8.0, vertical: 4),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minWidth: 46),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(btn.icon, size: 24),
-                            Text(btn.label, style: TextStyle(fontSize: 12))
-                          ],
-                        ),
-                      ),
-                    ),
-                  )
-                // 当隐藏时，使用 SizedBox.shrink() 并提供 Key，以便 AnimatedSwitcher 正确处理
-                : SizedBox.shrink(key: ValueKey('${btn.label}_hidden')),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300), // 匹配 AnimatedSize
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          // 只使用 FadeTransition 进行内容切换
+          return FadeTransition(
+            opacity: animation,
+            child: SizeTransition(
+              sizeFactor: animation,
+              axis: Axis.horizontal,
+              child: child,
+            ), // child 是 Row
           );
-        }).toList(),
+        },
+        child: rowChild, // 切换的是整个 Row
       ),
     );
   }
+
+  // return AnimatedSize(
+  //   duration: const Duration(milliseconds: 300),
+  //   curve: Curves.easeInOut, // 使用更平滑的曲线
+  //   child: Row(
+  //     mainAxisSize: MainAxisSize.min,
+  //     children: buttons.map((btn) {
+  //       final visible = ref.watch(btn.visibleProvider);
+  //       // 使用 AnimatedSwitcher 为按钮添加淡入淡出效果
+  //       return visible
+  //           ? InkWell(
+  //               // 使用唯一的 Key 很重要
+  //               key: ValueKey(btn.label),
+  //               onTap: btn.onTap,
+  //               child: Padding(
+  //                   padding: const EdgeInsets.symmetric(
+  //                       horizontal: 8.0, vertical: 4),
+  //                   child: ConstrainedBox(
+  //                     constraints: const BoxConstraints(minWidth: 46),
+  //                     child: Column(
+  //                       mainAxisSize: MainAxisSize.min,
+  //                       children: [
+  //                         Icon(btn.icon, size: 24),
+  //                         Text(btn.label, style: TextStyle(fontSize: 12))
+  //                       ],
+  //                     ),
+  //                   ),
+  //                 ),
+  //               )
+  //             : SizedBox.shrink(key: ValueKey('${btn.label}_hidden'));
+  //     }).toList(),
+  //   ),
+  // );
 }
 
 // ------------------ FloatingControlToolbar ------------------
@@ -402,8 +464,8 @@ class DemoToolbarPage extends StatelessWidget {
                     ? Icons.videocam
                     : Icons.videocam_off,
                 color: ref.watch(liveSectionVisibleProvider)
-                    ? Colors.white
-                    : Colors.white54,
+                    ? Colors.black // Changed color for better visibility
+                    : Colors.black54,
               ),
               onPressed: () => ref
                   .read(liveSectionVisibleProvider.notifier)
@@ -417,8 +479,8 @@ class DemoToolbarPage extends StatelessWidget {
                     ? Icons.settings
                     : Icons.settings_outlined,
                 color: ref.watch(settleSectionVisibleProvider)
-                    ? Colors.white
-                    : Colors.white54,
+                    ? Colors.black // Changed color for better visibility
+                    : Colors.black54,
               ),
               onPressed: () => ref
                   .read(settleSectionVisibleProvider.notifier)
