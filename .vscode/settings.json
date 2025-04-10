@@ -1,0 +1,6 @@
+{
+  "key": "cmd+s",
+  "command": "workbench.action.files.save",
+  "when": "!config.dart.saveWithoutFormatting",
+  "cmake.ignoreCMakeListsMissing": true
+}
