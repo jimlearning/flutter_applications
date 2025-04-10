@@ -6,8 +6,11 @@ import 'dart:ui';
 enum SectionType { live, settle, execute }
 
 enum LiveAction { audio, photo, video, speaker, more }
+
 enum SettleAction { setPose, setTarget }
+
 enum ExecuteAction { start, pause, resume, cancel }
+
 enum ExecuteState { idle, executing, paused }
 
 extension LiveActionExtension on LiveAction {
@@ -69,19 +72,25 @@ class ControlButtonConfig {
 }
 
 // ------------------ 状态定义 ------------------
-final executeStateProvider = StateProvider<ExecuteState>((ref) => ExecuteState.idle);
+final executeStateProvider =
+    StateProvider<ExecuteState>((ref) => ExecuteState.idle);
 
 final liveSectionVisibleProvider = StateProvider<bool>((ref) => true);
 final settleSectionVisibleProvider = StateProvider<bool>((ref) => true);
 
-final sectionButtonsProvider = Provider.family<List<ControlButtonConfig>, SectionType>((ref, section) {
+final sectionButtonsProvider =
+    Provider.family<List<ControlButtonConfig>, SectionType>((ref, section) {
   switch (section) {
     case SectionType.live:
       if (!ref.watch(liveSectionVisibleProvider)) return [];
-      return LiveAction.values.map((action) => _buildLiveButton(ref, action)).toList();
+      return LiveAction.values
+          .map((action) => _buildLiveButton(ref, action))
+          .toList();
     case SectionType.settle:
       if (!ref.watch(settleSectionVisibleProvider)) return [];
-      return SettleAction.values.map((action) => _buildSettleButton(ref, action)).toList();
+      return SettleAction.values
+          .map((action) => _buildSettleButton(ref, action))
+          .toList();
     case SectionType.execute:
       final state = ref.watch(executeStateProvider);
       return _buildExecuteButtons(ref, state);
@@ -142,7 +151,7 @@ List<ControlButtonConfig> _buildExecuteButtons(Ref ref, ExecuteState state) {
     notifier.state = ExecuteState.executing;
   }
 
-  final buttons = <ExecuteAction, Future<void> Function()> {
+  final buttons = <ExecuteAction, Future<void> Function()>{
     ExecuteAction.start: startAction,
     ExecuteAction.pause: pauseAction,
     ExecuteAction.resume: resumeAction,
@@ -168,7 +177,8 @@ List<ControlButtonConfig> _buildExecuteButtons(Ref ref, ExecuteState state) {
       icon: icon,
       label: entry.key.displayName,
       onTap: () => entry.value(),
-      visibleProvider: Provider.autoDispose((_) => visibleMap[entry.key] ?? false),
+      visibleProvider:
+          Provider.autoDispose((_) => visibleMap[entry.key] ?? false),
     );
   }).toList();
 }
@@ -183,30 +193,53 @@ class SectionWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final buttons = ref.watch(sectionButtonsProvider(sectionType));
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: buttons.map((btn) {
-        final visible = ref.watch(btn.visibleProvider);
-        return visible
-            ? InkWell(
-                key: ValueKey(btn.label),
-                onTap: btn.onTap,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minWidth: 46),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(btn.icon, size: 24),
-                        Text(btn.label, style: TextStyle(fontSize: 12))
-                      ],
-                    ),
-                  ),
+    // 使用 AnimatedSize 包裹 Row，使得 Section 内部尺寸变化也带动画
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300), // 内部动画可以快一些
+      curve: Curves.linear,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: buttons.map((btn) {
+          final visible = ref.watch(btn.visibleProvider);
+          // 使用 AnimatedSwitcher 为按钮添加淡入淡出效果
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200), // 匹配 AnimatedSize
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SizeTransition(
+                  // 添加尺寸过渡
+                  sizeFactor: animation,
+                  axis: Axis.horizontal, // 水平方向尺寸变化
+                  child: child,
                 ),
-              )
-            : const SizedBox.shrink();
-      }).toList(),
+              );
+            },
+            child: visible
+                ? InkWell(
+                    // 使用唯一的 Key 很重要
+                    key: ValueKey(btn.label),
+                    onTap: btn.onTap,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8.0, vertical: 4),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minWidth: 46),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(btn.icon, size: 24),
+                            Text(btn.label, style: TextStyle(fontSize: 12))
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                // 当隐藏时，使用 SizedBox.shrink() 并提供 Key，以便 AnimatedSwitcher 正确处理
+                : SizedBox.shrink(key: ValueKey('${btn.label}_hidden')),
+          );
+        }).toList(),
+      ),
     );
   }
 }
@@ -219,7 +252,7 @@ class FloatingControlToolbar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final showLive = ref.watch(liveSectionVisibleProvider);
     final showSettle = ref.watch(settleSectionVisibleProvider);
-    
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
@@ -246,29 +279,99 @@ class FloatingControlToolbar extends ConsumerWidget {
   }
 
   List<Widget> _buildSectionsWithDividers(bool showLive, bool showSettle) {
-    final sections = <Widget>[];
-    
-    if (showLive) {
-      sections.add(SectionWidget(sectionType: SectionType.live));
-    }
-    if (showSettle) {
-      sections.add(SectionWidget(sectionType: SectionType.settle));
-    }
-    sections.add(SectionWidget(sectionType: SectionType.execute));
+    final children = <Widget>[];
 
-    final result = <Widget>[];
-    for (int i = 0; i < sections.length; i++) {
-      result.add(sections[i]);
-      if (i < sections.length - 1) {
-        result.add(_buildDivider());
-      }
-    }
-    
-    return result;
+    // Live Section with Animation
+    children.add(
+      AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SizeTransition(
+              sizeFactor: animation,
+              axis: Axis.horizontal,
+              child: child,
+            ),
+          );
+        },
+        child: showLive
+            ? SectionWidget(
+                key: const ValueKey('live_section'),
+                sectionType: SectionType.live)
+            : const SizedBox.shrink(key: ValueKey('live_section_hidden')),
+      ),
+    );
+
+    // Divider between Live and Settle (if both visible) or Live and Execute
+    children.add(
+      AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+              opacity: animation, child: child); // Divider only fades
+        },
+        child: (showLive && showSettle) ||
+                (showLive && !showSettle) // Show if Live is visible
+            ? _buildDivider(key: const ValueKey('divider_live'))
+            : const SizedBox.shrink(key: ValueKey('divider_live_hidden')),
+      ),
+    );
+
+    // Settle Section with Animation
+    children.add(
+      AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SizeTransition(
+              sizeFactor: animation,
+              axis: Axis.horizontal,
+              child: child,
+            ),
+          );
+        },
+        child: showSettle
+            ? SectionWidget(
+                key: const ValueKey('settle_section'),
+                sectionType: SectionType.settle)
+            : const SizedBox.shrink(key: ValueKey('settle_section_hidden')),
+      ),
+    );
+
+    // Divider between Settle and Execute (if Settle visible)
+    children.add(
+      AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+              opacity: animation, child: child); // Divider only fades
+        },
+        child: showSettle // Show if Settle is visible
+            ? _buildDivider(key: const ValueKey('divider_settle'))
+            : const SizedBox.shrink(key: ValueKey('divider_settle_hidden')),
+      ),
+    );
+
+    // Execute Section (always visible, no animation needed here, but keep consistent structure)
+    children.add(SectionWidget(
+        key: const ValueKey('execute_section'),
+        sectionType: SectionType.execute));
+
+    // Filter out empty SizedBoxes that might result from hidden sections/dividers
+    // This prevents extra space when sections are hidden.
+    return children
+        .where((widget) => !(widget is SizedBox &&
+            widget.key != null &&
+            (widget.key as ValueKey).value.toString().contains('_hidden')))
+        .toList();
   }
 
-  Widget _buildDivider() {
+  // Add Key parameter to _buildDivider
+  Widget _buildDivider({Key? key}) {
     return SizedBox(
+      key: key, // Assign the key here
       height: 24,
       child: Center(
         child: VerticalDivider(
@@ -295,21 +398,31 @@ class DemoToolbarPage extends StatelessWidget {
           Consumer(builder: (context, ref, _) {
             return IconButton(
               icon: Icon(
-                ref.watch(liveSectionVisibleProvider) ? Icons.videocam : Icons.videocam_off,
-                color: ref.watch(liveSectionVisibleProvider) ? Colors.white : Colors.white54,
+                ref.watch(liveSectionVisibleProvider)
+                    ? Icons.videocam
+                    : Icons.videocam_off,
+                color: ref.watch(liveSectionVisibleProvider)
+                    ? Colors.white
+                    : Colors.white54,
               ),
-              onPressed: () => ref.read(liveSectionVisibleProvider.notifier).state = 
-                  !ref.read(liveSectionVisibleProvider),
+              onPressed: () => ref
+                  .read(liveSectionVisibleProvider.notifier)
+                  .state = !ref.read(liveSectionVisibleProvider),
             );
           }),
           Consumer(builder: (context, ref, _) {
             return IconButton(
               icon: Icon(
-                ref.watch(settleSectionVisibleProvider) ? Icons.settings : Icons.settings_outlined,
-                color: ref.watch(settleSectionVisibleProvider) ? Colors.white : Colors.white54,
+                ref.watch(settleSectionVisibleProvider)
+                    ? Icons.settings
+                    : Icons.settings_outlined,
+                color: ref.watch(settleSectionVisibleProvider)
+                    ? Colors.white
+                    : Colors.white54,
               ),
-              onPressed: () => ref.read(settleSectionVisibleProvider.notifier).state = 
-                  !ref.read(settleSectionVisibleProvider),
+              onPressed: () => ref
+                  .read(settleSectionVisibleProvider.notifier)
+                  .state = !ref.read(settleSectionVisibleProvider),
             );
           }),
         ],
