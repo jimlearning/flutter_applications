@@ -204,6 +204,18 @@ List<ControlButtonConfig> _buildExecuteButtons(Ref ref, ExecuteState state) {
   }).toList();
 }
 
+// ------------------ 动画工具方法 ------------------
+Widget _buildFadeSizeTransition(Widget child, Animation<double> animation) {
+  return FadeTransition(
+    opacity: animation,
+    child: SizeTransition(
+      sizeFactor: animation,
+      axis: Axis.horizontal,
+      child: child,
+    ),
+  );
+}
+
 // ------------------ Section Widget ------------------
 class SectionWidget extends ConsumerWidget {
   final SectionType sectionType;
@@ -251,59 +263,12 @@ class SectionWidget extends ConsumerWidget {
     );
 
     // 4. AnimatedSize 包裹 AnimatedSwitcher，AnimatedSwitcher 包裹 Row
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-      child: AnimatedSwitcher(
+    return AnimatedSwitcher(
         duration: const Duration(milliseconds: 300), // 匹配 AnimatedSize
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          // 只使用 FadeTransition 进行内容切换
-          return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              sizeFactor: animation,
-              axis: Axis.horizontal,
-              child: child,
-            ), // child 是 Row
-          );
-        },
+        transitionBuilder: _buildFadeSizeTransition,
         child: rowChild, // 切换的是整个 Row
-      ),
-    );
+      );
   }
-
-  // return AnimatedSize(
-  //   duration: const Duration(milliseconds: 300),
-  //   curve: Curves.easeInOut, // 使用更平滑的曲线
-  //   child: Row(
-  //     mainAxisSize: MainAxisSize.min,
-  //     children: buttons.map((btn) {
-  //       final visible = ref.watch(btn.visibleProvider);
-  //       // 使用 AnimatedSwitcher 为按钮添加淡入淡出效果
-  //       return visible
-  //           ? InkWell(
-  //               // 使用唯一的 Key 很重要
-  //               key: ValueKey(btn.label),
-  //               onTap: btn.onTap,
-  //               child: Padding(
-  //                   padding: const EdgeInsets.symmetric(
-  //                       horizontal: 8.0, vertical: 4),
-  //                   child: ConstrainedBox(
-  //                     constraints: const BoxConstraints(minWidth: 46),
-  //                     child: Column(
-  //                       mainAxisSize: MainAxisSize.min,
-  //                       children: [
-  //                         Icon(btn.icon, size: 24),
-  //                         Text(btn.label, style: TextStyle(fontSize: 12))
-  //                       ],
-  //                     ),
-  //                   ),
-  //                 ),
-  //               )
-  //             : SizedBox.shrink(key: ValueKey('${btn.label}_hidden'));
-  //     }).toList(),
-  //   ),
-  // );
 }
 
 // ------------------ FloatingControlToolbar ------------------
@@ -331,7 +296,11 @@ class FloatingControlToolbar extends ConsumerWidget {
               curve: Curves.linear,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
-                children: _buildSectionsWithDividers(showLive, showSettle),
+                children: _buildSectionsWithDividers({
+                  SectionType.live: showLive,
+                  SectionType.settle: showSettle,
+                  SectionType.execute: true
+                }),
               ),
             ),
           ),
@@ -340,94 +309,41 @@ class FloatingControlToolbar extends ConsumerWidget {
     );
   }
 
-  List<Widget> _buildSectionsWithDividers(bool showLive, bool showSettle) {
-    final children = <Widget>[];
-
-    // Live Section with Animation
-    children.add(
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              sizeFactor: animation,
-              axis: Axis.horizontal,
-              child: child,
-            ),
-          );
-        },
-        child: showLive
-            ? SectionWidget(
-                key: const ValueKey('live_section'),
-                sectionType: SectionType.live)
-            : const SizedBox.shrink(key: ValueKey('live_section_hidden')),
-      ),
-    );
-
-    // Divider between Live and Settle (if both visible) or Live and Execute
-    children.add(
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return FadeTransition(
-              opacity: animation, child: child); // Divider only fades
-        },
-        child: (showLive && showSettle) ||
-                (showLive && !showSettle) // Show if Live is visible
-            ? _buildDivider(key: const ValueKey('divider_live'))
-            : const SizedBox.shrink(key: ValueKey('divider_live_hidden')),
-      ),
-    );
-
-    // Settle Section with Animation
-    children.add(
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              sizeFactor: animation,
-              axis: Axis.horizontal,
-              child: child,
-            ),
-          );
-        },
-        child: showSettle
-            ? SectionWidget(
-                key: const ValueKey('settle_section'),
-                sectionType: SectionType.settle)
-            : const SizedBox.shrink(key: ValueKey('settle_section_hidden')),
-      ),
-    );
-
-    // Divider between Settle and Execute (if Settle visible)
-    children.add(
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return FadeTransition(
-              opacity: animation, child: child); // Divider only fades
-        },
-        child: showSettle // Show if Settle is visible
-            ? _buildDivider(key: const ValueKey('divider_settle'))
-            : const SizedBox.shrink(key: ValueKey('divider_settle_hidden')),
-      ),
-    );
-
-    // Execute Section (always visible, no animation needed here, but keep consistent structure)
-    children.add(SectionWidget(
-        key: const ValueKey('execute_section'),
-        sectionType: SectionType.execute));
-
-    // Filter out empty SizedBoxes that might result from hidden sections/dividers
-    // This prevents extra space when sections are hidden.
-    return children
-        .where((widget) => !(widget is SizedBox &&
-            widget.key != null &&
-            (widget.key as ValueKey).value.toString().contains('_hidden')))
-        .toList();
+  List<Widget> _buildSectionsWithDividers(Map<SectionType, bool> visibilityMap) {
+    final sections = visibilityMap.entries.toList();
+    final widgets = <Widget>[];
+    
+    for (int i = 0; i < sections.length; i++) {
+      final entry = sections[i];
+      widgets.add(
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          transitionBuilder: _buildFadeSizeTransition,
+          child: entry.value
+              ? SectionWidget(
+                  key: ValueKey('${entry.key}_section'),
+                  sectionType: entry.key,
+                )
+              : SizedBox.shrink(key: ValueKey('${entry.key}_section_hidden')),
+        )
+      );
+      
+      // 添加分割线逻辑
+      if (i < sections.length - 1) {
+        // 查找下一个可见section的索引
+        int nextVisibleIndex = i + 1;
+        while (nextVisibleIndex < sections.length && !sections[nextVisibleIndex].value) {
+          nextVisibleIndex++;
+        }
+        
+        // 如果当前section可见且找到下一个可见section
+        if (entry.value && nextVisibleIndex < sections.length) {
+          widgets.add(_buildDivider(key: ValueKey('divider_${i}_to_$nextVisibleIndex')));
+        }
+      }
+    }
+    
+    return widgets;
   }
 
   // Add Key parameter to _buildDivider
