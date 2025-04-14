@@ -68,13 +68,12 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
 
   void _updateNormalizedPosition() {
     // 计算相对于中心的归一化坐标 (-1,-1) 到 (1,1)
-    // 问题在这里：需要考虑中心键的半径对最大距离的影响
     const knobRadius = 33.0; // 中心键半径
     final maxDistance = (widget.size / 2) - knobRadius; // 考虑中心键半径的最大距离
 
     _normalizedPosition = Offset(
-      _position.dx / maxDistance, // 使用修正后的最大距离
-      _position.dy / maxDistance, // 使用修正后的最大距离
+      _position.dx / maxDistance,
+      _position.dy / maxDistance,
     );
 
     // 确保归一化值不超过 1
@@ -87,14 +86,19 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
       _arcAngle = _normalizedPosition.direction;
     }
 
-    // 通知位置变化
-    if (widget.onPositionChanged != null) {
+    // 通知位置变化 - 只在拖动状态下才通知外部
+    if (widget.onPositionChanged != null && _isDragging) {
       widget.onPositionChanged!(_normalizedPosition);
     }
   }
 
   void _resetKnobPosition() {
     if (!_isDragging) {
+      // 在动画开始前先发送一次零位置
+      if (widget.onPositionChanged != null && _position != Offset.zero) {
+        widget.onPositionChanged!(Offset.zero);
+      }
+
       _animation = Tween<Offset>(
         begin: _position,
         end: Offset.zero,
