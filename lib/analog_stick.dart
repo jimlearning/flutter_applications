@@ -11,16 +11,14 @@ class AnalogStick extends StatefulWidget {
   final Color knobColor;
   final Color arcColor;
 
-  // 添加静态变量统一管理图片资源路径
   static const String centerImagePath = 'assets/images/analogstick/center.png';
   static const String arrowImagePath = 'assets/images/analogstick/arrow_up.png';
   static const String arcImagePath = 'assets/images/analogstick/arc.png';
 
-  // 添加更多自定义选项
   final Duration animationDuration;
   final Curve animationCurve;
   final double moveThreshold;
-  final bool enableHapticFeedback; // 添加触觉反馈开关
+  final bool enableHapticFeedback;
 
   const AnalogStick({
     Key? key,
@@ -32,7 +30,7 @@ class AnalogStick extends StatefulWidget {
     this.animationDuration = const Duration(milliseconds: 300),
     this.animationCurve = Curves.easeOutBack,
     this.moveThreshold = 5.0,
-    this.enableHapticFeedback = true, // 默认启用触觉反馈
+    this.enableHapticFeedback = true,
   }) : super(key: key);
 
   @override
@@ -46,8 +44,9 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
   late AnimationController _animationController;
   late Animation<Offset> _animation;
   double _arcAngle = 0;
-  Offset _initialTouchPosition = Offset.zero; // 添加初始触摸位置
-  bool _hasMoved = false; // 添加是否已移动的标志
+  Offset _initialTouchPosition = Offset.zero;
+  bool _hasMoved = false;
+  bool _reachedEdge = false;
 
   @override
   void initState() {
@@ -89,7 +88,7 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
     // 但我们需要确保在对角线方向上也能达到最大值
     // 例如，当摇杆在45度角方向上达到边缘时，x和y应该都是1.0而不是0.7071
 
-    // 方法1：直接映射到[-1,1]x[-1,1]的正方形
+    // 直接映射到[-1,1]x[-1,1]的正方形
     if (_position != Offset.zero) {
       // 保持方向不变，但确保在任何方向上都能达到最大值
       final dx = normalizedDistance * math.cos(angle);
@@ -157,7 +156,6 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
     final maxKnobDistance = radius - knobRadius;
 
     return GestureDetector(
-      // 添加触觉反馈
       onPanStart: (details) {
         if (widget.enableHapticFeedback) {
           HapticFeedback.lightImpact();
@@ -186,12 +184,11 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
           // 限制在圆形范围内，考虑中心键的大小
           final distance = localPosition.distance;
 
-          // 添加边缘触觉反馈，根据开关状态决定是否触发
           if (widget.enableHapticFeedback && distance > maxKnobDistance * 0.95 && !_reachedEdge) {
-            HapticFeedback.mediumImpact(); // 当接近边缘时提供中等强度的触觉反馈
+            HapticFeedback.mediumImpact();
             _reachedEdge = true;
           } else if (distance <= maxKnobDistance * 0.9) {
-            _reachedEdge = false; // 当远离边缘时重置标志
+            _reachedEdge = false;
           }
 
           if (distance > maxKnobDistance) {
@@ -223,18 +220,15 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
         ),
         child: Stack(
           children: [
-            // 使用图片替代方向键指示器
             Positioned.fill(
               child: ImageDirectionIndicators(),
             ),
-            // 使用图片替代弧光效果
-            if (_isDragging || _position != Offset.zero)
+            if (_isDragging && _position != Offset.zero)
               Positioned.fill(
                 child: ImageArc(
                   angle: _arcAngle,
                 ),
               ),
-            // 中心键 - 使用图片替代
             Positioned(
               left: radius + _position.dx - knobRadius,
               top: radius + _position.dy - knobRadius,
@@ -250,20 +244,14 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
       ),
     );
   }
-
-  // 添加边缘触觉反馈标志
-  bool _reachedEdge = false;
 }
 
-// 使用图片的弧光组件
 class ImageArc extends StatelessWidget {
   final double angle;
-
   const ImageArc({Key? key, required this.angle}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // 直接使用SoftArcPainter绘制弧光
     return CustomPaint(
       painter: SoftArcPainter(
         angle: angle,
@@ -274,16 +262,13 @@ class ImageArc extends StatelessWidget {
   }
 }
 
-// 添加枚举定义方向位置
 enum DirectionPosition { top, right, bottom, left }
 
-// 使用图片的方向指示器组件 - 优化逻辑
 class ImageDirectionIndicators extends StatelessWidget {
   const ImageDirectionIndicators({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // 使用枚举或更结构化的方式定义方向
     final directions = [
       {'position': DirectionPosition.top, 'angle': 0.0},
       {'position': DirectionPosition.right, 'angle': math.pi / 2},
@@ -296,7 +281,6 @@ class ImageDirectionIndicators extends StatelessWidget {
         final position = direction['position'] as DirectionPosition;
         final angle = direction['angle'] as double;
 
-        // 使用更简洁的方式定位箭头
         return _positionArrow(position, angle);
       }).toList(),
     );
@@ -335,7 +319,6 @@ class ImageDirectionIndicators extends StatelessWidget {
     }
   }
 
-  // 构建旋转的箭头
   Widget _buildRotatedArrow(double angle) {
     return Transform.rotate(
       angle: angle,
@@ -348,7 +331,6 @@ class ImageDirectionIndicators extends StatelessWidget {
   }
 }
 
-// 替换原来的ArcPainter为带有渐变效果的版本
 class SoftArcPainter extends CustomPainter {
   final double angle;
   final Color color;
@@ -365,7 +347,6 @@ class SoftArcPainter extends CustomPainter {
     final startAngle = angle - (45 * math.pi / 180);
     const sweepAngle = 0.25 * 2 * math.pi;
 
-    // 使用更高效的方式计算点
     final startPoint = _calculatePointOnCircle(center, arcRadius, startAngle);
     final endPoint = _calculatePointOnCircle(center, arcRadius, startAngle + sweepAngle);
 
@@ -415,7 +396,6 @@ class SoftArcPainter extends CustomPainter {
     );
   }
 
-  // 提取计算圆上点的方法，提高代码可读性
   Offset _calculatePointOnCircle(Offset center, double radius, double angle) {
     return Offset(
       center.dx + radius * math.cos(angle),
@@ -432,13 +412,11 @@ class SoftArcPainter extends CustomPainter {
 class DualAnalogStickController extends StatelessWidget {
   final Function(Offset)? onLeftStickChanged;
   final Function(Offset)? onRightStickChanged;
-  final bool enableHapticFeedback; // 添加触觉反馈开关
 
   const DualAnalogStickController({
     Key? key,
     this.onLeftStickChanged,
     this.onRightStickChanged,
-    this.enableHapticFeedback = true, // 默认启用触觉反馈
   }) : super(key: key);
 
   @override
@@ -452,14 +430,12 @@ class DualAnalogStickController extends StatelessWidget {
             padding: const EdgeInsets.only(left: 16),
             child: AnalogStick(
               onPositionChanged: onLeftStickChanged,
-              enableHapticFeedback: enableHapticFeedback, // 传递触觉反馈开关
             ),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: AnalogStick(
               onPositionChanged: onRightStickChanged,
-              enableHapticFeedback: enableHapticFeedback, // 传递触觉反馈开关
             ),
           ),
         ],
