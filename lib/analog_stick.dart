@@ -28,6 +28,8 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
   late AnimationController _animationController;
   late Animation<Offset> _animation;
   double _arcAngle = 0;
+  Offset _initialTouchPosition = Offset.zero; // 添加初始触摸位置
+  bool _hasMoved = false; // 添加是否已移动的标志
 
   @override
   void initState() {
@@ -93,46 +95,50 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     final radius = widget.size / 2;
-    final knobSize = 40.0; // 中心键的大小
+    final knobSize = 40.0;
     final knobRadius = knobSize / 2;
-    final maxKnobDistance = radius - knobRadius; // 修正：考虑中心键半径
+    final maxKnobDistance = radius - knobRadius;
 
     return GestureDetector(
       onPanStart: (details) {
         _isDragging = true;
+        _hasMoved = false; // 重置移动标志
         final RenderBox renderBox = context.findRenderObject() as RenderBox;
         final center = Offset(radius, radius);
-        final localPosition = renderBox.globalToLocal(details.globalPosition) - center;
-
-        // 限制在圆形范围内，考虑中心键的大小
-        final distance = localPosition.distance;
-        if (distance > maxKnobDistance) {
-          _position = localPosition * (maxKnobDistance / distance);
-        } else {
-          _position = localPosition;
-        }
-
-        _updateNormalizedPosition();
+        _initialTouchPosition = renderBox.globalToLocal(details.globalPosition) - center;
+        
+        // 初始时不移动中心键，保持在原位
         setState(() {});
       },
       onPanUpdate: (details) {
         final RenderBox renderBox = context.findRenderObject() as RenderBox;
         final center = Offset(radius, radius);
         final localPosition = renderBox.globalToLocal(details.globalPosition) - center;
-
-        // 限制在圆形范围内，考虑中心键的大小
-        final distance = localPosition.distance;
-        if (distance > maxKnobDistance) {
-          _position = localPosition * (maxKnobDistance / distance);
-        } else {
-          _position = localPosition;
+        
+        // 计算移动距离，判断是否超过阈值
+        final moveDistance = (_initialTouchPosition - localPosition).distance;
+        if (!_hasMoved && moveDistance > 5.0) { // 5.0是移动阈值，可以调整
+          _hasMoved = true;
         }
+        
+        // 只有当确认移动时才更新位置
+        if (_hasMoved) {
+          // 限制在圆形范围内，考虑中心键的大小
+          final distance = localPosition.distance;
+          if (distance > maxKnobDistance) {
+            _position = localPosition * (maxKnobDistance / distance);
+          } else {
+            _position = localPosition;
+          }
 
-        _updateNormalizedPosition();
+          _updateNormalizedPosition();
+        }
+        
         setState(() {});
       },
       onPanEnd: (details) {
         _isDragging = false;
+        _hasMoved = false;
         _resetKnobPosition();
       },
       child: Container(
