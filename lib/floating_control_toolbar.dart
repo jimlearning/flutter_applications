@@ -1,18 +1,21 @@
+// ================= IMPORTS =================
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:ui';
 
-// ------------------ ENUM 定义 ------------------
+// ================= CONSTANTS =================
+const _kToolbarPadding = EdgeInsets.all(12.0);
+const _kAnimationDuration = Duration(milliseconds: 300);
+final _kToolbarBorderRadius = BorderRadius.circular(16);
+
+// ================= ENUMS =================
 enum SectionType { live, settle, execute }
-
 enum LiveAction { audio, photo, video, speaker, more }
-
 enum SettleAction { setPose, setTarget }
-
 enum ExecuteAction { start, pause, resume, cancel }
-
 enum ExecuteState { idle, executing, paused }
 
+// ================= EXTENSIONS =================
 extension LiveActionExtension on LiveAction {
   String get displayName {
     switch (this) {
@@ -72,24 +75,7 @@ extension ExecuteActionExtension on ExecuteAction {
   }
 }
 
-// ------------------ 按钮模型 ------------------
-class ControlButtonConfig {
-  final IconData icon;
-  final String label;
-  final String key;
-  final VoidCallback onTap;
-  final AutoDisposeProvider<bool> visibleProvider;
-
-  ControlButtonConfig({
-    required this.icon,
-    required this.label,
-    required this.key,
-    required this.onTap,
-    required this.visibleProvider,
-  });
-}
-
-// ------------------ 状态定义 ------------------
+// ================= PROVIDERS =================
 final executeStateProvider =
     StateProvider<ExecuteState>((ref) => ExecuteState.idle);
 
@@ -115,6 +101,210 @@ final sectionButtonsProvider =
   }
 });
 
+// ================= MODELS =================
+class ControlButtonConfig {
+  final IconData icon;
+  final String label;
+  final String key;
+  final VoidCallback onTap;
+  final AutoDisposeProvider<bool> visibleProvider;
+
+  ControlButtonConfig({
+    required this.icon,
+    required this.label,
+    required this.key,
+    required this.onTap,
+    required this.visibleProvider,
+  });
+}
+
+// ================= WIDGETS =================
+
+// 浮动布局包装器
+class FloatingToolbar extends StatelessWidget {
+  final double bottomOffset;
+  
+  const FloatingToolbar({
+    super.key,
+    this.bottomOffset = 32,
+  });
+  
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      bottom: bottomOffset,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: FittedBox(
+          child: ControlToolbar(),
+        ),
+      ),
+    );
+  }
+}
+
+// 核心工具栏组件
+class ControlToolbar extends ConsumerWidget { 
+  const ControlToolbar({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showLive = ref.watch(liveSectionVisibleProvider);
+    final showSettle = ref.watch(settleSectionVisibleProvider);
+
+    return ClipRRect(
+      borderRadius: _kToolbarBorderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Color(0xFF38383A).withAlpha(25),
+            borderRadius: _kToolbarBorderRadius,
+          ),
+          child: Padding(
+            padding: _kToolbarPadding,
+            child: AnimatedSize(
+              duration: _kAnimationDuration,
+              curve: Curves.linear,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: _buildSectionsWithDividers({
+                  SectionType.live: showLive,
+                  SectionType.settle: showSettle,
+                  SectionType.execute: true
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildSectionsWithDividers(Map<SectionType, bool> visibilityMap) {
+    final sections = visibilityMap.entries.toList();
+    final widgets = <Widget>[];
+    
+    for (int i = 0; i < sections.length; i++) {
+      final entry = sections[i];
+      widgets.add(
+        AnimatedSwitcher(
+          duration: _kAnimationDuration,
+          transitionBuilder: _buildFadeSizeTransition,
+          child: entry.value
+              ? SectionWidget(
+                  key: ValueKey('${entry.key}_section'),
+                  sectionType: entry.key,
+                )
+              : SizedBox.shrink(key: ValueKey('${entry.key}_section_hidden')),
+        )
+      );
+      
+      // 添加分割线逻辑
+      if (i < sections.length - 1) {
+        // 查找下一个可见section的索引
+        int nextVisibleIndex = i + 1;
+        while (nextVisibleIndex < sections.length && !sections[nextVisibleIndex].value) {
+          nextVisibleIndex++;
+        }
+        
+        // 如果当前section可见且找到下一个可见section
+        if (entry.value && nextVisibleIndex < sections.length) {
+          widgets.add(_buildDivider(key: ValueKey('divider_${i}_to_$nextVisibleIndex')));
+        }
+      }
+    }
+    
+    return widgets;
+  }
+
+  Widget _buildDivider({Key? key}) {
+    return SizedBox(
+      key: key, // Assign the key here
+      height: 24,
+      child: Center(
+        child: VerticalDivider(
+          width: 10,
+          thickness: 1,
+          color: Color(0xFFC7C7CB),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFadeSizeTransition(Widget child, Animation<double> animation) {
+    return FadeTransition(
+      opacity: animation,
+      child: SizeTransition(
+        sizeFactor: animation,
+        axis: Axis.horizontal,
+        child: child,
+      ),
+    );
+  }
+}
+
+// ================= PRIVATE WIDGETS =================
+// 内部使用的子组件
+class SectionWidget extends ConsumerWidget {
+  final SectionType sectionType;
+  
+  const SectionWidget({
+    super.key,
+    required this.sectionType,
+  });
+  
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final buttons = ref.watch(sectionButtonsProvider(sectionType));
+
+    // 1. 过滤出当前可见的按钮
+    final visibleButtons = buttons.where((btn) {
+      // 注意：这里用 read 而不是 watch，避免 AnimatedSwitcher 内部不必要的重绘
+      // visibleProvider 变化会触发 SectionWidget 重建，从而重新计算 visibleButtons
+      return ref.read(btn.visibleProvider);
+    }).toList();
+
+    // 2. 基于可见按钮生成 Row 的 Key
+    final rowKey = ValueKey(visibleButtons.map((btn) => btn.key).join(','));
+
+    // 3. 构建只包含可见按钮的 Row
+    final rowChild = Row(
+      key: rowKey, // 使用动态 Key
+      mainAxisSize: MainAxisSize.min,
+      children: visibleButtons.map((btn) {
+        // 直接构建 InkWell，不再需要内部 AnimatedSwitcher
+        return InkWell(
+          key: ValueKey(btn.key), // 仍然需要 Key
+          onTap: btn.onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 46),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(btn.icon, size: 24),
+                  Text(btn.label, style: TextStyle(fontSize: 12))
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+
+    // 4. AnimatedSize 包裹 AnimatedSwitcher，AnimatedSwitcher 包裹 Row
+    return AnimatedSwitcher(
+        duration: _kAnimationDuration, // 匹配 AnimatedSize
+        transitionBuilder: (child, animation) => ControlToolbar()._buildFadeSizeTransition(child, animation),
+        child: rowChild, // 切换的是整个 Row
+      );
+  }
+}
+
+// ================= BUTTON BUILDERS =================
 ControlButtonConfig _buildLiveButton(Ref ref, LiveAction action) {
   final icon = switch (action) {
     LiveAction.audio => Icons.mic,
@@ -204,165 +394,7 @@ List<ControlButtonConfig> _buildExecuteButtons(Ref ref, ExecuteState state) {
   }).toList();
 }
 
-// ------------------ 动画工具方法 ------------------
-Widget _buildFadeSizeTransition(Widget child, Animation<double> animation) {
-  return FadeTransition(
-    opacity: animation,
-    child: SizeTransition(
-      sizeFactor: animation,
-      axis: Axis.horizontal,
-      child: child,
-    ),
-  );
-}
-
-// ------------------ Section Widget ------------------
-class SectionWidget extends ConsumerWidget {
-  final SectionType sectionType;
-
-  const SectionWidget({super.key, required this.sectionType});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final buttons = ref.watch(sectionButtonsProvider(sectionType));
-
-    // 1. 过滤出当前可见的按钮
-    final visibleButtons = buttons.where((btn) {
-      // 注意：这里用 read 而不是 watch，避免 AnimatedSwitcher 内部不必要的重绘
-      // visibleProvider 变化会触发 SectionWidget 重建，从而重新计算 visibleButtons
-      return ref.read(btn.visibleProvider);
-    }).toList();
-
-    // 2. 基于可见按钮生成 Row 的 Key
-    final rowKey = ValueKey(visibleButtons.map((btn) => btn.key).join(','));
-
-    // 3. 构建只包含可见按钮的 Row
-    final rowChild = Row(
-      key: rowKey, // 使用动态 Key
-      mainAxisSize: MainAxisSize.min,
-      children: visibleButtons.map((btn) {
-        // 直接构建 InkWell，不再需要内部 AnimatedSwitcher
-        return InkWell(
-          key: ValueKey(btn.key), // 仍然需要 Key
-          onTap: btn.onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 46),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(btn.icon, size: 24),
-                  Text(btn.label, style: TextStyle(fontSize: 12))
-                ],
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-
-    // 4. AnimatedSize 包裹 AnimatedSwitcher，AnimatedSwitcher 包裹 Row
-    return AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300), // 匹配 AnimatedSize
-        transitionBuilder: _buildFadeSizeTransition,
-        child: rowChild, // 切换的是整个 Row
-      );
-  }
-}
-
-// ------------------ FloatingControlToolbar ------------------
-class FloatingControlToolbar extends ConsumerWidget {
-  const FloatingControlToolbar({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final showLive = ref.watch(liveSectionVisibleProvider);
-    final showSettle = ref.watch(settleSectionVisibleProvider);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Color(0xFF38383A).withAlpha(25),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.linear,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: _buildSectionsWithDividers({
-                  SectionType.live: showLive,
-                  SectionType.settle: showSettle,
-                  SectionType.execute: true
-                }),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildSectionsWithDividers(Map<SectionType, bool> visibilityMap) {
-    final sections = visibilityMap.entries.toList();
-    final widgets = <Widget>[];
-    
-    for (int i = 0; i < sections.length; i++) {
-      final entry = sections[i];
-      widgets.add(
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          transitionBuilder: _buildFadeSizeTransition,
-          child: entry.value
-              ? SectionWidget(
-                  key: ValueKey('${entry.key}_section'),
-                  sectionType: entry.key,
-                )
-              : SizedBox.shrink(key: ValueKey('${entry.key}_section_hidden')),
-        )
-      );
-      
-      // 添加分割线逻辑
-      if (i < sections.length - 1) {
-        // 查找下一个可见section的索引
-        int nextVisibleIndex = i + 1;
-        while (nextVisibleIndex < sections.length && !sections[nextVisibleIndex].value) {
-          nextVisibleIndex++;
-        }
-        
-        // 如果当前section可见且找到下一个可见section
-        if (entry.value && nextVisibleIndex < sections.length) {
-          widgets.add(_buildDivider(key: ValueKey('divider_${i}_to_$nextVisibleIndex')));
-        }
-      }
-    }
-    
-    return widgets;
-  }
-
-  // Add Key parameter to _buildDivider
-  Widget _buildDivider({Key? key}) {
-    return SizedBox(
-      key: key, // Assign the key here
-      height: 24,
-      child: Center(
-        child: VerticalDivider(
-          width: 10,
-          thickness: 1,
-          color: Color(0xFFC7C7CB),
-        ),
-      ),
-    );
-  }
-}
-
-// ------------------ 示例页面 ------------------
+// ================= DEMO PAGE =================
 class DemoToolbarPage extends StatelessWidget {
   const DemoToolbarPage({super.key});
 
@@ -371,7 +403,7 @@ class DemoToolbarPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.grey[200],
       appBar: AppBar(
-        title: const Text('Floating Toolbar Demo'),
+        title: const Text('Floating Control Toolbar Demo'),
         actions: [
           Consumer(builder: (context, ref, _) {
             return IconButton(
@@ -408,16 +440,7 @@ class DemoToolbarPage extends StatelessWidget {
       body: Stack(
         children: [
           Center(child: Text('内容区域')), // 可放地图、视频等控件
-          Positioned(
-            bottom: 32,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: FittedBox(
-                child: FloatingControlToolbar(),
-              ),
-            ),
-          ),
+          const FloatingToolbar(),
         ],
       ),
     );
