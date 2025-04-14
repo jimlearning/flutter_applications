@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class AnalogStick extends StatefulWidget {
   final Function(Offset)? onPositionChanged;
@@ -14,6 +16,12 @@ class AnalogStick extends StatefulWidget {
   static const String arrowImagePath = 'assets/images/analogstick/arrow_up.png';
   static const String arcImagePath = 'assets/images/analogstick/arc.png';
 
+  // 添加更多自定义选项
+  final Duration animationDuration;
+  final Curve animationCurve;
+  final double moveThreshold;
+  final bool enableHapticFeedback; // 添加触觉反馈开关
+
   const AnalogStick({
     Key? key,
     this.onPositionChanged,
@@ -21,6 +29,10 @@ class AnalogStick extends StatefulWidget {
     this.backgroundColor = const Color(0x8038383A),
     this.knobColor = const Color(0xFFCCCCCC),
     this.arcColor = Colors.blue,
+    this.animationDuration = const Duration(milliseconds: 300),
+    this.animationCurve = Curves.easeOutBack,
+    this.moveThreshold = 5.0,
+    this.enableHapticFeedback = true, // 默认启用触觉反馈
   }) : super(key: key);
 
   @override
@@ -55,41 +67,45 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
     _animation.addListener(() {
       setState(() {
         _position = _animation.value;
-        _updateNormalizedPosition();
+        // 动画过程中不需要通知外部，只需要更新内部状态
+        _updateNormalizedPositionInternal();
       });
     });
   }
 
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  void _updateNormalizedPosition() {
-    // 计算相对于中心的归一化坐标 (-1,-1) 到 (1,1)
-    const knobRadius = 33.0; // 中心键半径
-    final maxDistance = (widget.size / 2) - knobRadius; // 考虑中心键半径的最大距离
+  // 添加一个不通知外部的内部更新方法
+  void _updateNormalizedPositionInternal() {
+    const knobRadius = 33.0;
+    final maxDistance = (widget.size / 2) - knobRadius;
 
     _normalizedPosition = Offset(
       _position.dx / maxDistance,
       _position.dy / maxDistance,
     );
 
-    // 确保归一化值不超过 1
     if (_normalizedPosition.distance > 1.0) {
       _normalizedPosition = _normalizedPosition / _normalizedPosition.distance;
     }
 
-    // 计算弧光角度
     if (_position != Offset.zero) {
       _arcAngle = _normalizedPosition.direction;
     }
+    // 不通知外部
+  }
+
+  void _updateNormalizedPosition() {
+    _updateNormalizedPositionInternal();
 
     // 通知位置变化 - 只在拖动状态下才通知外部
     if (widget.onPositionChanged != null && _isDragging) {
       widget.onPositionChanged!(_normalizedPosition);
     }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   void _resetKnobPosition() {
@@ -114,21 +130,24 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     final radius = widget.size / 2;
-    const knobSize = 33.0;
-    const knobRadius = knobSize / 2;
+    const double knobSize = 33.0;
+    const double knobRadius = knobSize / 2;
     final maxKnobDistance = radius - knobRadius;
 
     return GestureDetector(
+      // 添加触觉反馈
       onPanStart: (details) {
+        if (widget.enableHapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
         _isDragging = true;
-        _hasMoved = false; // 重置移动标志
+        _hasMoved = false;
         final RenderBox renderBox = context.findRenderObject() as RenderBox;
         final center = Offset(radius, radius);
         _initialTouchPosition = renderBox.globalToLocal(details.globalPosition) - center;
-
-        // 初始时不移动中心键，保持在原位
         setState(() {});
       },
+
       onPanUpdate: (details) {
         final RenderBox renderBox = context.findRenderObject() as RenderBox;
         final center = Offset(radius, radius);
@@ -136,7 +155,7 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
 
         // 计算移动距离，判断是否超过阈值
         final moveDistance = (_initialTouchPosition - localPosition).distance;
-        if (!_hasMoved && moveDistance > 5.0) { // 5.0是移动阈值，可以调整
+        if (!_hasMoved && moveDistance > widget.moveThreshold) {
           _hasMoved = true;
         }
 
@@ -144,6 +163,15 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
         if (_hasMoved) {
           // 限制在圆形范围内，考虑中心键的大小
           final distance = localPosition.distance;
+
+          // 添加边缘触觉反馈，根据开关状态决定是否触发
+          if (widget.enableHapticFeedback && distance > maxKnobDistance * 0.95 && !_reachedEdge) {
+            HapticFeedback.mediumImpact(); // 当接近边缘时提供中等强度的触觉反馈
+            _reachedEdge = true;
+          } else if (distance <= maxKnobDistance * 0.9) {
+            _reachedEdge = false; // 当远离边缘时重置标志
+          }
+
           if (distance > maxKnobDistance) {
             _position = localPosition * (maxKnobDistance / distance);
           } else {
@@ -156,8 +184,12 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
         setState(() {});
       },
       onPanEnd: (details) {
+        if (widget.enableHapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
         _isDragging = false;
         _hasMoved = false;
+        _reachedEdge = false;
         _resetKnobPosition();
       },
       child: Container(
@@ -196,6 +228,9 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
       ),
     );
   }
+
+  // 添加边缘触觉反馈标志
+  bool _reachedEdge = false;
 }
 
 // 使用图片的弧光组件
@@ -217,73 +252,65 @@ class ImageArc extends StatelessWidget {
   }
 }
 
+// 添加枚举定义方向位置
+enum DirectionPosition { top, right, bottom, left }
+
 // 使用图片的方向指示器组件 - 优化逻辑
 class ImageDirectionIndicators extends StatelessWidget {
   const ImageDirectionIndicators({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // 定义方向和对应的角度
+    // 使用枚举或更结构化的方式定义方向
     final directions = [
-      {'position': 'top', 'angle': 0.0},
-      {'position': 'right', 'angle': math.pi / 2},
-      {'position': 'bottom', 'angle': math.pi},
-      {'position': 'left', 'angle': -math.pi / 2},
+      {'position': DirectionPosition.top, 'angle': 0.0},
+      {'position': DirectionPosition.right, 'angle': math.pi / 2},
+      {'position': DirectionPosition.bottom, 'angle': math.pi},
+      {'position': DirectionPosition.left, 'angle': -math.pi / 2},
     ];
 
     return Stack(
       children: directions.map((direction) {
-        // 根据方向确定位置
-        Widget positionedArrow;
+        final position = direction['position'] as DirectionPosition;
+        final angle = direction['angle'] as double;
 
-        switch(direction['position']) {
-          case 'top':
-            positionedArrow = Positioned(
-              top: 10,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: _buildRotatedArrow(direction['angle'] as double),
-              ),
-            );
-            break;
-          case 'right':
-            positionedArrow = Positioned(
-              right: 10,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: _buildRotatedArrow(direction['angle'] as double),
-              ),
-            );
-            break;
-          case 'bottom':
-            positionedArrow = Positioned(
-              bottom: 10,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: _buildRotatedArrow(direction['angle'] as double),
-              ),
-            );
-            break;
-          case 'left':
-            positionedArrow = Positioned(
-              left: 10,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: _buildRotatedArrow(direction['angle'] as double),
-              ),
-            );
-            break;
-          default:
-            positionedArrow = const SizedBox();
-        }
-
-        return positionedArrow;
+        // 使用更简洁的方式定位箭头
+        return _positionArrow(position, angle);
       }).toList(),
     );
+  }
+
+  Widget _positionArrow(DirectionPosition position, double angle) {
+    switch(position) {
+      case DirectionPosition.top:
+        return Positioned(
+          top: 10,
+          left: 0,
+          right: 0,
+          child: Center(child: _buildRotatedArrow(angle)),
+        );
+      case DirectionPosition.right:
+        return Positioned(
+          right: 10,
+          top: 0,
+          bottom: 0,
+          child: Center(child: _buildRotatedArrow(angle)),
+        );
+      case DirectionPosition.bottom:
+        return Positioned(
+          bottom: 10,
+          left: 0,
+          right: 0,
+          child: Center(child: _buildRotatedArrow(angle)),
+        );
+      case DirectionPosition.left:
+        return Positioned(
+          left: 10,
+          top: 0,
+          bottom: 0,
+          child: Center(child: _buildRotatedArrow(angle)),
+        );
+    }
   }
 
   // 构建旋转的箭头
@@ -309,33 +336,16 @@ class SoftArcPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 使用缓存的计算结果
     final center = Offset(size.width / 2, size.height / 2);
-    final arcRadius = radius - 2; // 将半径调整得更接近边缘，从-5改为-2
+    final arcRadius = radius - 2;
 
-    // 计算弧的起始和结束角度
-    // Start -45° 相对于当前角度
-    final startAngle = angle - (45 * math.pi / 180); // -45度转换为弧度
-    // Sweep 25% 对应90度 (360度的25%)
-    final sweepAngle = 0.25 * 2 * math.pi; // 90度转换为弧度
+    final startAngle = angle - (45 * math.pi / 180);
+    const sweepAngle = 0.25 * 2 * math.pi;
 
-    // 计算弧的中点角度
-    final midAngle = startAngle + sweepAngle / 2;
-
-    // 计算弧上的三个点：起点、中点和终点
-    final startPoint = Offset(
-      center.dx + arcRadius * math.cos(startAngle),
-      center.dy + arcRadius * math.sin(startAngle)
-    );
-
-    final midPoint = Offset(
-      center.dx + arcRadius * math.cos(midAngle),
-      center.dy + arcRadius * math.sin(midAngle)
-    );
-
-    final endPoint = Offset(
-      center.dx + arcRadius * math.cos(startAngle + sweepAngle),
-      center.dy + arcRadius * math.sin(startAngle + sweepAngle)
-    );
+    // 使用更高效的方式计算点
+    final startPoint = _calculatePointOnCircle(center, arcRadius, startAngle);
+    final endPoint = _calculatePointOnCircle(center, arcRadius, startAngle + sweepAngle);
 
     // 创建一个带有渐变的画笔
     final gradientPaint = Paint()
@@ -383,115 +393,30 @@ class SoftArcPainter extends CustomPainter {
     );
   }
 
+  // 提取计算圆上点的方法，提高代码可读性
+  Offset _calculatePointOnCircle(Offset center, double radius, double angle) {
+    return Offset(
+      center.dx + radius * math.cos(angle),
+      center.dy + radius * math.sin(angle)
+    );
+  }
+
   @override
   bool shouldRepaint(SoftArcPainter oldDelegate) {
     return oldDelegate.angle != angle; // 只有角度变化时才重绘
   }
 }
 
-// 新增方向指示器组件
-class DirectionIndicators extends StatelessWidget {
-  final Color color;
-
-  const DirectionIndicators({Key? key, required this.color}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: DirectionIndicatorPainter(color: color),
-    );
-  }
-}
-
-class DirectionIndicatorPainter extends CustomPainter {
-  final Color color;
-
-  DirectionIndicatorPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-    const indicatorSize = 12.0;
-    final distance = radius * 0.7; // 方向键到中心的距离
-
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    // 上方向键
-    _drawTriangle(
-      canvas,
-      center + Offset(0, -distance),
-      indicatorSize,
-      0, // 向上
-      paint
-    );
-
-    // 右方向键
-    _drawTriangle(
-      canvas,
-      center + Offset(distance, 0),
-      indicatorSize,
-      math.pi / 2, // 向右
-      paint
-    );
-
-    // 下方向键
-    _drawTriangle(
-      canvas,
-      center + Offset(0, distance),
-      indicatorSize,
-      math.pi, // 向下
-      paint
-    );
-
-    // 左方向键
-    _drawTriangle(
-      canvas,
-      center + Offset(-distance, 0),
-      indicatorSize,
-      -math.pi / 2, // 向左
-      paint
-    );
-  }
-
-  void _drawTriangle(Canvas canvas, Offset center, double size, double rotation, Paint paint) {
-    final path = Path();
-
-    // 创建一个三角形
-    path.moveTo(center.dx, center.dy - size / 2);
-    path.lineTo(center.dx - size / 2, center.dy + size / 2);
-    path.lineTo(center.dx + size / 2, center.dy + size / 2);
-    path.close();
-
-    // 旋转画布
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(rotation);
-    canvas.translate(-center.dx, -center.dy);
-
-    // 绘制三角形
-    canvas.drawPath(path, paint);
-
-    // 恢复画布
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(DirectionIndicatorPainter oldDelegate) {
-    return oldDelegate.color != color;
-  }
-}
-
 class DualAnalogStickController extends StatelessWidget {
   final Function(Offset)? onLeftStickChanged;
   final Function(Offset)? onRightStickChanged;
+  final bool enableHapticFeedback; // 添加触觉反馈开关
 
   const DualAnalogStickController({
     Key? key,
     this.onLeftStickChanged,
     this.onRightStickChanged,
+    this.enableHapticFeedback = true, // 默认启用触觉反馈
   }) : super(key: key);
 
   @override
@@ -505,12 +430,14 @@ class DualAnalogStickController extends StatelessWidget {
             padding: const EdgeInsets.only(left: 16),
             child: AnalogStick(
               onPositionChanged: onLeftStickChanged,
+              enableHapticFeedback: enableHapticFeedback, // 传递触觉反馈开关
             ),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: AnalogStick(
               onPositionChanged: onRightStickChanged,
+              enableHapticFeedback: enableHapticFeedback, // 传递触觉反馈开关
             ),
           ),
         ],
