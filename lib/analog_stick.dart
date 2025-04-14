@@ -78,21 +78,43 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
     const knobRadius = 33.0;
     final maxDistance = (widget.size / 2) - knobRadius;
 
-    _normalizedPosition = Offset(
-      _position.dx / maxDistance,
-      _position.dy / maxDistance,
-    );
+    // 计算当前位置的距离和角度
+    final distance = _position.distance;
+    final angle = _position.direction;
 
-    if (_normalizedPosition.distance > 1.0) {
-      _normalizedPosition = _normalizedPosition / _normalizedPosition.distance;
+    // 计算归一化距离 (0.0 到 1.0)
+    final normalizedDistance = math.min(distance / maxDistance, 1.0);
+
+    // 使用极坐标转换为笛卡尔坐标
+    // 但我们需要确保在对角线方向上也能达到最大值
+    // 例如，当摇杆在45度角方向上达到边缘时，x和y应该都是1.0而不是0.7071
+
+    // 方法1：直接映射到[-1,1]x[-1,1]的正方形
+    if (_position != Offset.zero) {
+      // 保持方向不变，但确保在任何方向上都能达到最大值
+      final dx = normalizedDistance * math.cos(angle);
+      final dy = normalizedDistance * math.sin(angle);
+
+      // 计算最大分量
+      final maxComponent = math.max(dx.abs(), dy.abs());
+      if (maxComponent > 0) {
+        // 按最大分量缩放，确保最大分量为1.0
+        final scale = normalizedDistance / maxComponent;
+        _normalizedPosition = Offset(dx * scale, dy * scale);
+      } else {
+        _normalizedPosition = Offset.zero;
+      }
+    } else {
+      _normalizedPosition = Offset.zero;
     }
 
     if (_position != Offset.zero) {
-      _arcAngle = _normalizedPosition.direction;
+      _arcAngle = angle;
     }
     // 不通知外部
   }
 
+  // 原方法保持不变，但只在拖动时调用
   void _updateNormalizedPosition() {
     _updateNormalizedPositionInternal();
 
