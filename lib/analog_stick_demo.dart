@@ -9,7 +9,7 @@ class AnalogStickDemoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
-      title: '双摇杆演示',
+      // title: '双摇杆演示',
       home: AnalogStickDemo(),
     );
   }
@@ -29,21 +29,18 @@ class _AnalogStickDemoState extends State<AnalogStickDemo> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('双摇杆控制器演示'),
-        backgroundColor: Colors.blueGrey,
-      ),
-      body: Column(
+      body: SafeArea(child:
+      Column(
         children: [
           Expanded(
             child: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text(
-                    '摇杆位置信息',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
+                  // const Text(
+                  //   '摇杆位置信息',
+                  //   style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  // ),
                   const SizedBox(height: 20),
                   Text(
                     '左摇杆: (${_leftStickPosition.dx.toStringAsFixed(2)}, ${_leftStickPosition.dy.toStringAsFixed(2)})',
@@ -59,7 +56,7 @@ class _AnalogStickDemoState extends State<AnalogStickDemo> {
                     width: 200,
                     height: 200,
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
+                      color: Colors.grey.shade200.withAlpha(0),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: CustomPaint(
@@ -87,6 +84,7 @@ class _AnalogStickDemoState extends State<AnalogStickDemo> {
           ),
         ],
       ),
+      ),
     );
   }
 }
@@ -104,6 +102,7 @@ class PositionIndicatorPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 10;
+    const dotRadius = 8.0; // 圆点的半径
 
     // 绘制背景圆
     final bgPaint = Paint()
@@ -112,20 +111,22 @@ class PositionIndicatorPainter extends CustomPainter {
       ..strokeWidth = 2;
     canvas.drawCircle(center, radius, bgPaint);
 
-    // 绘制十字线
-    final linePaint = Paint()
-      ..color = Colors.grey
-      ..strokeWidth = 1;
-    canvas.drawLine(
-      Offset(center.dx, center.dy - radius),
-      Offset(center.dx, center.dy + radius),
-      linePaint,
-    );
-    canvas.drawLine(
-      Offset(center.dx - radius, center.dy),
-      Offset(center.dx + radius, center.dy),
-      linePaint,
-    );
+    // // 绘制十字线
+    // final linePaint = Paint()
+    //   ..color = Colors.grey
+    //   ..strokeWidth = 1;
+    // canvas.drawLine(
+    //   Offset(center.dx, center.dy - radius),
+    //   Offset(center.dx, center.dy + radius),
+    //   linePaint,
+    // );
+    // canvas.drawLine(
+    //   Offset(center.dx - radius, center.dy),
+    //   Offset(center.dx + radius, center.dy),
+    //   linePaint,
+    // );
+    // 计算可用半径（考虑圆点自身的大小）
+    final availableRadius = radius - dotRadius;
 
     // 绘制左摇杆位置
     final leftPaint = Paint()
@@ -133,10 +134,10 @@ class PositionIndicatorPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
     canvas.drawCircle(
       Offset(
-        center.dx + leftPosition.dx * radius,
-        center.dy + leftPosition.dy * radius,
+        center.dx + leftPosition.dx * availableRadius,
+        center.dy + leftPosition.dy * availableRadius,
       ),
-      8,
+      dotRadius,
       leftPaint,
     );
 
@@ -146,10 +147,10 @@ class PositionIndicatorPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
     canvas.drawCircle(
       Offset(
-        center.dx + rightPosition.dx * radius,
-        center.dy + rightPosition.dy * radius,
+        center.dx + rightPosition.dx * availableRadius,
+        center.dy + rightPosition.dy * availableRadius,
       ),
-      8,
+      dotRadius,
       rightPaint,
     );
   }
