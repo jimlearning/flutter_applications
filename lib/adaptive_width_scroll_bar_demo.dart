@@ -31,6 +31,36 @@ class AdaptiveWidthScrollBarDemo extends StatefulWidget {
 class _AdaptiveWidthScrollBarDemoState extends State<AdaptiveWidthScrollBarDemo> {
   bool _showAllTools = false;
 
+  final ScrollController _scrollController = ScrollController();
+  bool _canScrollLeft = false;
+  bool _canScrollRight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_updateScrollIndicators);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_updateScrollIndicators);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _updateScrollIndicators() {
+    final newCanScrollLeft = _scrollController.position.pixels > 0;
+    final newCanScrollRight = _scrollController.position.pixels <
+        _scrollController.position.maxScrollExtent;
+
+    if (newCanScrollLeft != _canScrollLeft || newCanScrollRight != _canScrollRight) {
+      setState(() {
+        _canScrollLeft = newCanScrollLeft;
+        _canScrollRight = newCanScrollRight;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -59,11 +89,21 @@ class _AdaptiveWidthScrollBarDemoState extends State<AdaptiveWidthScrollBarDemo>
           ),
 
           // 自适应宽度滚动工具栏
-          AdaptiveWidthScrollBar(
-            bottomOffset: 100,
-            children: _buildToolbarItems(),
-          ),
+          _buildScrollableToolbar(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildScrollableToolbar() {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 100,
+      child: Center(
+        child: AdaptiveWidthScrollBar(
+          children: _buildToolbarItems(),
+        ),
       ),
     );
   }
@@ -95,8 +135,6 @@ class _AdaptiveWidthScrollBarDemoState extends State<AdaptiveWidthScrollBarDemo>
     if (!_showAllTools) {
       return [
         ...basicTools,
-        const ToolbarDivider(),
-        const ScrollIndicator(showRightIndicator: true),
       ];
     }
 
