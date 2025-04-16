@@ -161,7 +161,7 @@ class PositionIndicatorPainter extends CustomPainter {
 
     // 确保距离不超过1.0
     // 对于对角线方向，我们需要特殊处理，确保点不会超出圆的范围
-    final maxAllowedDistance = 1.0;
+    const maxAllowedDistance = 1.0;
 
     // 计算映射后的距离
     // 对于对角线方向(45°、135°、225°、315°)，最大距离应该是0.7071(1/sqrt(2))
