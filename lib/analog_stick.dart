@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -79,6 +80,7 @@ class _DualAnalogStickState extends State<DualAnalogStick> {
   }
 }
 
+// --- AnalogStick Widget ---
 class AnalogStick extends StatefulWidget {
   final Function(Offset)? onPositionChanged;
   final bool enableHapticFeedback;
@@ -86,30 +88,38 @@ class AnalogStick extends StatefulWidget {
   const AnalogStick({
     super.key,
     this.onPositionChanged,
-    this.enableHapticFeedback = true,
+    this.enableHapticFeedback = false,
   });
 
   @override
   State<AnalogStick> createState() => _AnalogStickState();
 }
 
-class _AnalogStickState extends State<AnalogStick>
-    with SingleTickerProviderStateMixin {
+class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStateMixin {
+  // --- Constants ---
   final double _size = 120;
+  static const double _knobSize = 33.0;
+  static const double _knobRadius = _knobSize / 2;
+  final Duration _updateInterval = const Duration(milliseconds: 100); // Callback interval
 
-  Offset _position = Offset.zero;
-  Offset _normalizedPosition = Offset.zero;
-  Offset _initialTouchPosition = Offset.zero;
+  // --- State Variables ---
+  Offset _position = Offset.zero; // Raw position of the knob relative to center
+  Offset _normalizedPosition = Offset.zero; // Position normalized to [-1, 1] range (approx)
+  Offset _lastStablePosition = Offset.zero; // Last position sent via callback
+  double _arcAngle = 0; // Angle for the visual arc indicator
 
-  late AnimationController _animationController;
-  late Animation<Offset> _animation;
-
-  double _arcAngle = 0;
-
-  final double _moveThreshold = 5.0;
-  bool _hasMoved = false;
+  // --- Touch/Drag State ---
   bool _isDragging = false;
   bool _reachedEdge = false;
+  int? _pointerId; // ID of the pointer currently interacting with this stick
+
+  // --- Animation & Timer ---
+  late AnimationController _animationController;
+  late Animation<Offset> _animation;
+  Timer? _positionUpdateTimer;
+
+  // --- Removed Unused Variable ---
+  // Offset _initialTouchPosition = Offset.zero; // This was unused
 
   @override
   void initState() {
@@ -117,158 +127,218 @@ class _AnalogStickState extends State<AnalogStick>
 
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 300), // Reset animation duration
     );
+    // Animation for snapping back to center
     _animation = Tween<Offset>(begin: Offset.zero, end: Offset.zero).animate(
       CurvedAnimation(
         parent: _animationController,
-        curve: Curves.easeOutBack,
+        curve: Curves.easeOutBack, // Snap back effect
       ),
     );
 
+    // Listener to update knob position during reset animation
     _animation.addListener(() {
       setState(() {
         _position = _animation.value;
-        // No need to notify external during animation, just update internal state
-        _updateNormalizedPositionInternal();
+        _calculateNormalizedPosition(); // Update internal normalized state based on animation
       });
     });
   }
 
-  // Internal update method that doesn't notify external
-  void _updateNormalizedPositionInternal() {
-    const knobRadius = 33.0;
-    final maxDistance = (_size / 2) - knobRadius;
+  @override
+  void dispose() {
+    _pointerId = null; // Clear pointer ID just in case
+    _positionUpdateTimer?.cancel(); // Cancel timer
+    _animationController.dispose(); // Dispose animation controller
+    super.dispose();
+  }
+
+  // Calculates the normalized position based on the current raw _position
+  void _calculateNormalizedPosition() {
+    final maxDistance = (_size / 2) - _knobRadius; // Max distance knob center can travel
 
     final distance = _position.distance;
-    final angle = _position.direction;
+    final angle = _position.direction; // Angle in radians
 
+    // Clamp distance to maxDistance and normalize (0.0 to 1.0)
     final normalizedDistance = math.min(distance / maxDistance, 1.0);
 
     if (_position != Offset.zero) {
+      // Calculate components based on normalized distance and angle
+      // Note: Y-axis is inverted for screen coordinates (dy is negative for up)
       final dx = normalizedDistance * math.cos(angle);
-      final dy = -normalizedDistance * math.sin(angle); // 保持Y轴反转
+      final dy = -normalizedDistance * math.sin(angle);
 
+      // This scaling ensures the output vector stays within a square boundary [-1,1] for both axes
+      // while preserving the direction, useful for some control schemes.
       final maxComponent = math.max(dx.abs(), dy.abs());
       if (maxComponent > 0) {
         final scale = normalizedDistance / maxComponent;
         _normalizedPosition = Offset(dx * scale, dy * scale);
       } else {
-        _normalizedPosition = Offset.zero;
+        _normalizedPosition = Offset.zero; // Should not happen if distance > 0
       }
+
+      _arcAngle = angle; // Update visual arc angle
     } else {
       _normalizedPosition = Offset.zero;
-    }
-
-    if (_position != Offset.zero) {
-      _arcAngle = angle;
+      // Keep _arcAngle as is when position is zero? Or reset? Current keeps last angle.
     }
   }
 
-  // Original method remains but only called during dragging
-  void _updateNormalizedPosition() {
-    _updateNormalizedPositionInternal();
+  // Updates the internal position state and triggers a UI rebuild
+  void _updatePositionAndVisuals() {
+    _calculateNormalizedPosition(); // Calculate the new normalized position
 
-    // Notify position change - only notify external during dragging
-    if (widget.onPositionChanged != null && _isDragging) {
-      widget.onPositionChanged!(_normalizedPosition);
+    // Store the latest calculated position for the timer callback
+    _lastStablePosition = _normalizedPosition;
+
+    // Trigger UI rebuild to show updated knob position and arc
+    setState(() {});
+  }
+
+  // Starts the periodic timer to send position updates via callback
+  void _startPositionUpdates() {
+    _positionUpdateTimer?.cancel(); // Cancel any existing timer
+
+    // Send the initial position immediately when dragging starts
+    if (_isDragging && widget.onPositionChanged != null) {
+      widget.onPositionChanged!(_lastStablePosition);
     }
-  }
 
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  void _resetKnobPosition() {
-    if (!_isDragging) {
-      // Send a zero position before starting the animation
-      if (widget.onPositionChanged != null && _position != Offset.zero) {
-        widget.onPositionChanged!(Offset.zero);
+    // Start the periodic timer
+    _positionUpdateTimer = Timer.periodic(_updateInterval, (timer) {
+      // If still dragging, send the last known stable position
+      if (_isDragging && widget.onPositionChanged != null) {
+        widget.onPositionChanged!(_lastStablePosition);
+      } else {
+        // Optional: Cancel timer if not dragging anymore (should be handled by _handlePointerEnd)
+        // timer.cancel();
       }
-
-      _animation = Tween<Offset>(begin: _position, end: Offset.zero).animate(
-        CurvedAnimation(
-          parent: _animationController,
-          curve: Curves.easeOutBack,
-        ),
-      );
-      _animationController.reset();
-      _animationController.forward();
-    }
+    });
   }
+
+  // Stops the periodic timer
+  void _stopPositionUpdates() {
+    _positionUpdateTimer?.cancel();
+    _positionUpdateTimer = null;
+  }
+
+  // Handles the end of a touch interaction (Up or Cancel)
+  void _handlePointerEnd() {
+    // Called ONLY from onPointerUp/onPointerCancel after pointerId check
+
+    if (widget.enableHapticFeedback) {
+      HapticFeedback.lightImpact();
+    }
+    _isDragging = false; // Mark as not dragging
+    _reachedEdge = false;
+    _pointerId = null; // Release the pointer lock
+    _stopPositionUpdates(); // Stop the periodic updates timer
+
+    // --- Reset Logic ---
+    // 1. Send the final zero value via callback
+    if (widget.onPositionChanged != null) {
+      _lastStablePosition = Offset.zero; // Ensure stable position is zero
+      widget.onPositionChanged!(Offset.zero);
+    }
+
+    // 2. Animate knob back to center visually
+    _animation = Tween<Offset>(begin: _position, end: Offset.zero).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutBack,
+      ),
+    );
+    _animationController.reset();
+    _animationController.forward();
+    // The animation listener handles setState during the animation
+  }
+
 
   @override
   Widget build(BuildContext context) {
     final radius = _size / 2;
-    const double knobSize = 33.0;
-    const double knobRadius = knobSize / 2;
-    final maxKnobDistance = radius - knobRadius;
+    final maxKnobDistance = radius - _knobRadius; // Use the constant
 
-    return GestureDetector(
-      onPanStart: (details) {
+    return Listener(
+      onPointerDown: (details) {
+        if (_pointerId != null) return; // Ignore if already tracking another pointer
+
+        // Stop reset animation if it's running from a previous release
+        if (_animationController.isAnimating) {
+          _animationController.stop();
+        }
+
+        _pointerId = details.pointer; // Track this pointer
         if (widget.enableHapticFeedback) {
           HapticFeedback.lightImpact();
         }
-        _isDragging = true;
-        _hasMoved = false;
+        _isDragging = true; // Set dragging state
+
+        // Calculate initial position based on touch location
         final RenderBox renderBox = context.findRenderObject() as RenderBox;
         final center = Offset(radius, radius);
-        _initialTouchPosition =
-            renderBox.globalToLocal(details.globalPosition) - center;
+        final localPosition = renderBox.globalToLocal(details.position) - center;
+
+        // Clamp initial position within bounds
+        final distance = localPosition.distance;
+        if (distance > maxKnobDistance) {
+          _position = localPosition * (maxKnobDistance / distance);
+        } else {
+          _position = localPosition;
+        }
+
+        // Update internal state based on initial position
+        _calculateNormalizedPosition();
+        _lastStablePosition = _normalizedPosition;
+
+        // Start sending periodic updates
+        _startPositionUpdates();
+
+        // Update UI to show knob at initial press position
         setState(() {});
       },
-      onPanUpdate: (details) {
+      onPointerMove: (details) {
+        // Only process moves for the tracked pointer and if dragging
+        if (_pointerId != details.pointer || !_isDragging) return;
+
+        // Calculate new position based on move event
         final RenderBox renderBox = context.findRenderObject() as RenderBox;
         final center = Offset(radius, radius);
-        final localPosition =
-            renderBox.globalToLocal(details.globalPosition) - center;
+        final localPosition = renderBox.globalToLocal(details.position) - center;
+        final distance = localPosition.distance;
 
-        // 移除这行
-        // final invertedPosition = Offset(localPosition.dx, -localPosition.dy);
-
-        // Calculate movement distance and check if it exceeds the threshold
-        final moveDistance = (_initialTouchPosition - localPosition).distance;
-        if (!_hasMoved && moveDistance > _moveThreshold) {
-          _hasMoved = true;
-        }
-
-        // Only update position when movement is confirmed
-        if (_hasMoved) {
-          // Limit within circular range, considering the size of center knob
-          final distance = localPosition.distance;
-
-          if (widget.enableHapticFeedback &&
-              distance > maxKnobDistance * 0.95 &&
-              !_reachedEdge) {
-            HapticFeedback.mediumImpact();
-            _reachedEdge = true;
-          } else if (distance <= maxKnobDistance * 0.9) {
-            _reachedEdge = false;
-          }
-
-          if (distance > maxKnobDistance) {
-            _position = localPosition *
-                (maxKnobDistance /
-                    distance); // 使用localPosition而不是invertedPosition
-          } else {
-            _position = localPosition; // 使用localPosition而不是invertedPosition
-          }
-
-          _updateNormalizedPosition();
-        }
-
-        setState(() {});
-      },
-      onPanEnd: (details) {
+        // Haptic feedback near the edge
         if (widget.enableHapticFeedback) {
-          HapticFeedback.lightImpact();
+           if (distance > maxKnobDistance * 0.95 && !_reachedEdge) {
+             HapticFeedback.mediumImpact();
+             _reachedEdge = true;
+           } else if (distance <= maxKnobDistance * 0.9) {
+             _reachedEdge = false;
+           }
         }
-        _isDragging = false;
-        _hasMoved = false;
-        _reachedEdge = false;
-        _resetKnobPosition();
+
+        // Clamp position within bounds
+        if (distance > maxKnobDistance) {
+          _position = localPosition * (maxKnobDistance / distance);
+        } else {
+          _position = localPosition;
+        }
+
+        // Update internal state and visuals, but DO NOT send callback here
+        _updatePositionAndVisuals();
+      },
+      onPointerUp: (details) {
+        // Only handle up event for the tracked pointer
+        if (_pointerId != details.pointer) return;
+        _handlePointerEnd(); // Perform cleanup and reset
+      },
+      onPointerCancel: (details) {
+        // Only handle cancel event for the tracked pointer
+        if (_pointerId != details.pointer) return;
+        _handlePointerEnd(); // Perform cleanup and reset
       },
       child: Container(
         width: _size,
@@ -279,16 +349,19 @@ class _AnalogStickState extends State<AnalogStick>
         ),
         child: Stack(
           children: [
+            // Background direction indicators
             Positioned.fill(child: buildDirectionIndicators()),
+            // Arc indicator showing direction (only when dragging)
             if (_isDragging && _position != Offset.zero)
               Positioned.fill(child: ImageArc(angle: _arcAngle)),
+            // The draggable knob
             Positioned(
-              left: radius + _position.dx - knobRadius,
-              top: radius + _position.dy - knobRadius,
+              left: radius + _position.dx - _knobRadius, // Use constant
+              top: radius + _position.dy - _knobRadius, // Use constant
               child: Image.asset(
                 'assets/images/analog_stick/center.png',
-                width: knobSize,
-                height: knobSize,
+                width: _knobSize, // Use constant
+                height: _knobSize, // Use constant
                 fit: BoxFit.contain,
               ),
             ),
@@ -298,32 +371,36 @@ class _AnalogStickState extends State<AnalogStick>
     );
   }
 
-Widget buildDirectionIndicators() {
-  final indicators = [
-    {'alignment': Alignment(0, -0.88), 'angle': 0.0},
-    {'alignment': Alignment(0.88, 0), 'angle': math.pi/2},
-    {'alignment': Alignment(0, 0.88), 'angle': math.pi},
-    {'alignment': Alignment(-0.88, 0), 'angle': -math.pi/2},
-  ];
+  // Builds the static direction indicator arrows
+  Widget buildDirectionIndicators() {
+    final indicators = [
+      {'alignment': Alignment(0, -0.88), 'angle': 0.0},
+      {'alignment': Alignment(0.88, 0), 'angle': math.pi/2},
+      {'alignment': Alignment(0, 0.88), 'angle': math.pi},
+      {'alignment': Alignment(-0.88, 0), 'angle': -math.pi/2},
+    ];
 
-  return Stack(
-    children: indicators.map((indicator) {
-      return Align(
-        alignment: indicator['alignment'] as Alignment,
-        child: Transform.rotate(
-          angle: indicator['angle'] as double,
-          child: Image.asset(
-            'assets/images/analog_stick/arrow_up.png',
-            width: 18,
-            height: 18,
+    return Stack(
+      children: indicators.map((indicator) {
+        return Align(
+          alignment: indicator['alignment'] as Alignment,
+          child: Transform.rotate(
+            angle: indicator['angle'] as double,
+            child: Image.asset(
+              'assets/images/analog_stick/arrow_up.png',
+              width: 18,
+              height: 18,
+            ),
           ),
-        ),
-      );
-    }).toList(),
-  );
-}
+        );
+      }).toList(),
+    );
+  }
 }
 
+
+// --- ImageArc Widget ---
+// This seems fine, uses SoftArcPainter.
 class ImageArc extends StatelessWidget {
   final double angle;
   const ImageArc({super.key, required this.angle});
@@ -340,6 +417,9 @@ class ImageArc extends StatelessWidget {
   }
 }
 
+
+// --- SoftArcPainter ---
+// This handles the custom painting of the arc. Looks reasonable.
 class SoftArcPainter extends CustomPainter {
   final double angle;
   final Color color;
@@ -410,15 +490,17 @@ class SoftArcPainter extends CustomPainter {
     );
   }
 
+  @override
+  bool shouldRepaint(SoftArcPainter oldDelegate) {
+    // Optimization: only repaint if angle or color or radius changes
+    return oldDelegate.angle != angle || oldDelegate.color != color || oldDelegate.radius != radius;
+  }
+
+  // Helper to calculate points on the circle for the gradient
   Offset calculatePointOnCircle(Offset center, double radius, double angle) {
     return Offset(
       center.dx + radius * math.cos(angle),
       center.dy + radius * math.sin(angle),
     );
-  }
-
-  @override
-  bool shouldRepaint(SoftArcPainter oldDelegate) {
-    return oldDelegate.angle != angle; // Only repaint when angle changes
   }
 }

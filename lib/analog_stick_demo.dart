@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'analog_stick.dart';
 
@@ -9,7 +11,6 @@ class AnalogStickDemoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
-      // title: '双摇杆演示',
       home: AnalogStickDemo(),
     );
   }
@@ -28,35 +29,48 @@ class _AnalogStickDemoState extends State<AnalogStickDemo> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child:
-      Column(
-        children: [
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    controlData.entries
-                        .map((entry) => '${entry.key}: \n${entry.value is Map ?
-                            entry.value.entries.map((e) => '${e.key}: ${e.value}').join('\n') :
-                            entry.value}')
-                        .join('\n\n'),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 20),
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        // --- Use a Column instead of Stack for vertical arrangement ---
+        child: Column(
+          children: [
+            // --- Use Expanded to allow the text area to fill available space ---
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView( // Add ScrollView in case text overflows
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0), // Add some padding
+                    child: Text(
+                      controlData.isEmpty
+                          ? "Move the sticks..." // Show placeholder if no data
+                          : controlData.entries
+                              .map((entry) =>
+                                  '${entry.key}: \n${entry.value is Map ? entry.value.entries.map((e) => '  ${e.key}: ${e.value}').join('\n') : entry.value}')
+                              .join('\n\n'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18, // Adjusted font size slightly
+                        color: Colors.white, // Use white for better contrast on black
+                        // Using random color on every build can be distracting
+                        // color: Color((Random().nextDouble() * 0xFFFFFF).toInt()).withAlpha(255)),
+                      ),
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
-          ),
-          DualAnalogStick(onControlChanged: (controlData) {
-            setState(() {
-              this.controlData = controlData;
-            });
-            debugPrint('controlData: $controlData');
-          }),
-        ],
-      ),
+            // --- Keep the DualAnalogStick at the bottom ---
+            // No need for SizedBox wrapper if it's directly in Column
+            DualAnalogStick(onControlChanged: (newData) { // Renamed param for clarity
+              setState(() {
+                controlData = newData;
+              });
+              debugPrint('controlData: $newData');
+            }),
+            // Optional: Add some padding below the sticks if needed
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
