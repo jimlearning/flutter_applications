@@ -34,5 +34,6 @@ dev_dependencies:
 flutter:
   uses-material-design: false
   assets:
-    - assets/images/analogstick/
-    - assets/images/toolbar/
+    - assets/images/analog_stick/
+    - assets/images/adaptive_scrollbar/
+    - assets/images/live_screenshot_default.jpg

@@ -64,9 +64,10 @@ class _AdaptiveScrollbarDemoState extends State<AdaptiveScrollbarDemo> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // backgroundColor: Colors.black.withAlpha(20),
       body: Stack(
         children: [
-          // 背景内容
+          _buildBackgroundImage(),
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -77,7 +78,7 @@ class _AdaptiveScrollbarDemoState extends State<AdaptiveScrollbarDemo> {
                       _showAllTools = !_showAllTools;
                     });
                   },
-                  child: Text(_showAllTools ? '显示精简工具栏' : '显示完整工具栏'),
+                  child: Text(_showAllTools ? '工具栏 1' : '工具栏 2'),
                 ),
               ],
             ),
@@ -176,6 +177,15 @@ class _AdaptiveScrollbarDemoState extends State<AdaptiveScrollbarDemo> {
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('点击了: $message')),
+    );
+  }
+
+  Widget _buildBackgroundImage() {
+    return Image.asset(
+      'assets/images/live_screenshot_default.jpg', // Corrected image path
+      fit: BoxFit.cover, // Cover the entire stack area
+      width: double.infinity, // Ensure it takes full width
+      height: double.infinity, // Ensure it takes full height
     );
   }
 }
