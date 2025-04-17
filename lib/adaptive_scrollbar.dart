@@ -15,6 +15,8 @@ class AdaptiveButton extends StatelessWidget {
   final String? label;
   final VoidCallback? onTap;
   final AdaptiveIconAlignment iconAlignment;
+  final double fontSize;
+  final double iconSize;
   final double spacing;
   final EdgeInsets padding;
 
@@ -24,6 +26,8 @@ class AdaptiveButton extends StatelessWidget {
     this.label,
     this.onTap,
     this.iconAlignment = AdaptiveIconAlignment.left,
+    this.fontSize = 12,
+    this.iconSize = 24,
     this.spacing = 4,
     this.padding = const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
   }) : assert(icon != null || label != null,
@@ -41,11 +45,12 @@ class AdaptiveButton extends StatelessWidget {
   }
 
   Widget _buildContent() {
-    final iconWidget =
-        icon != null ? Image(image: icon!, width: 24, height: 24) : null;
+    final iconWidget = icon != null
+        ? Image(image: icon!, width: iconSize, height: iconSize)
+        : null;
 
     final labelWidget = label != null
-        ? Text(label!, style: const TextStyle(fontSize: 12))
+        ? Text(label!, style: TextStyle(fontSize: fontSize))
         : null;
 
     switch (iconAlignment) {
@@ -95,20 +100,22 @@ class AdaptiveButton extends StatelessWidget {
 
 class AdaptiveDivider extends StatelessWidget {
   final double height;
+  final double width;
 
   const AdaptiveDivider({
     super.key,
     this.height = 24,
+    this.width = 16,
   });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: height,
-      child: const VerticalDivider(
-        width: 16,
+      child: VerticalDivider(
+        width: width,
         thickness: 1,
-        color: Color(0xFFC7C7CB),
+        color: const Color(0xFFC7C7CB),
       ),
     );
   }
@@ -198,7 +205,8 @@ class _AdaptiveScrollbarState extends State<AdaptiveScrollbar> {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
+              padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding, vertical: verticalPadding),
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final parentWidth = constraints.maxWidth;
@@ -206,7 +214,8 @@ class _AdaptiveScrollbarState extends State<AdaptiveScrollbar> {
 
                   final childrenWidth = _calculateChildrenWidth();
                   final availableWidth = constraints.maxWidth;
-                  final needsScrolling = childrenWidth > availableWidth + horizontalPadding * 2;
+                  final needsScrolling =
+                      childrenWidth > availableWidth + horizontalPadding * 2;
 
                   return Stack(
                     alignment: Alignment.center,
@@ -278,7 +287,7 @@ class _AdaptiveScrollbarState extends State<AdaptiveScrollbar> {
   double _calculateChildrenWidth() {
     if (!mounted) return 0;
 
-    double totalWidth = horizontalPadding;
+    double totalWidth = horizontalPadding * 2;
 
     for (var child in widget.children) {
       if (child is AdaptiveButton) {
@@ -289,48 +298,36 @@ class _AdaptiveScrollbarState extends State<AdaptiveScrollbar> {
         if (hasLabel) {
           final textPainter = TextPainter(
             text: TextSpan(
-                text: child.label, style: const TextStyle(fontSize: 12)),
+                text: child.label, style: TextStyle(fontSize: child.fontSize)),
             textDirection: TextDirection.ltr,
             maxLines: 1,
           )..layout();
           final textWidth = (textPainter.width * 2).roundToDouble() / 2;
 
-          // 根据图标和文本的排列方式计算宽度
           switch (child.iconAlignment) {
             case AdaptiveIconAlignment.left:
             case AdaptiveIconAlignment.right:
               // 水平排列：图标+间距+文本
-              buttonWidth = child.padding.horizontal + textWidth + (hasIcon ? (child.spacing + 24.0) : 0);
-              // debugPrint('textPainter.width: $textWidth');
+              buttonWidth = child.padding.horizontal +
+                  textWidth +
+                  (hasIcon ? (child.spacing + child.iconSize) : 0);
               break;
             case AdaptiveIconAlignment.top:
             case AdaptiveIconAlignment.bottom:
               // 垂直排列：取图标和文本的最大宽度
               buttonWidth = max(
-                child.padding.horizontal + (hasIcon ? 24.0 : 0),
-                child.padding.horizontal + textWidth
-              );
-              // debugPrint('textPainter.width: $textWidth');
+                  child.padding.horizontal + (hasIcon ? child.iconSize : 0),
+                  child.padding.horizontal + textWidth);
               break;
           }
         } else {
-          buttonWidth = child.padding.horizontal + 24.0; // 图标固定宽度
+          buttonWidth = child.padding.horizontal + child.iconSize;
         }
         totalWidth += buttonWidth;
-        // debugPrint(
-            // 'buttonWidth: $buttonWidth (alignment: ${child.iconAlignment})');
       } else if (child is AdaptiveDivider) {
-        totalWidth += 16.0;
-        // debugPrint('divider: 16');
+        totalWidth += child.width;
       }
-
-      // debugPrint('i: $i, totalWidth: $totalWidth');
-      // i++;
     }
-
-    totalWidth += horizontalPadding;
-
-    // debugPrint('totalWidth: $totalWidth');
 
     return totalWidth;
   }

@@ -123,6 +123,7 @@ class _AdaptiveScrollbarDemoState extends State<AdaptiveScrollbarDemo> {
         icon: const AssetImage('assets/images/toolbar/photo.png'),
         label: '照片',
         iconAlignment: AdaptiveIconAlignment.left,
+        padding: const EdgeInsets.all(20),
         onTap: () => _showSnackBar('照片'),
       ),
     ];
