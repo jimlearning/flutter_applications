@@ -6,30 +6,15 @@ import 'package:flutter/services.dart';
 
 class AnalogStick extends StatefulWidget {
   final Function(Offset)? onPositionChanged;
-  final double size;
-  final Color backgroundColor;
-  final Color knobColor;
-  final Color arcColor;
+  final bool enableHapticFeedback;
 
   static const String centerImagePath = 'assets/images/analogstick/center.png';
   static const String arrowImagePath = 'assets/images/analogstick/arrow_up.png';
   static const String arcImagePath = 'assets/images/analogstick/arc.png';
 
-  final Duration animationDuration;
-  final Curve animationCurve;
-  final double moveThreshold;
-  final bool enableHapticFeedback;
-
   const AnalogStick({
     Key? key,
     this.onPositionChanged,
-    this.size = 120,
-    this.backgroundColor = const Color(0x8038383A),
-    this.knobColor = const Color(0xFFCCCCCC),
-    this.arcColor = Colors.blue,
-    this.animationDuration = const Duration(milliseconds: 300),
-    this.animationCurve = Curves.easeOutBack,
-    this.moveThreshold = 5.0,
     this.enableHapticFeedback = true,
   }) : super(key: key);
 
@@ -38,6 +23,7 @@ class AnalogStick extends StatefulWidget {
 }
 
 class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStateMixin {
+  double _size = 120;
   Offset _position = Offset.zero;
   Offset _normalizedPosition = Offset.zero;
   bool _isDragging = false;
@@ -45,6 +31,7 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
   late Animation<Offset> _animation;
   double _arcAngle = 0;
   Offset _initialTouchPosition = Offset.zero;
+  double _moveThreshold = 5.0;
   bool _hasMoved = false;
   bool _reachedEdge = false;
 
@@ -75,7 +62,7 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
   // 添加一个不通知外部的内部更新方法
   void _updateNormalizedPositionInternal() {
     const knobRadius = 33.0;
-    final maxDistance = (widget.size / 2) - knobRadius;
+    final maxDistance = (_size / 2) - knobRadius;
 
     // 计算当前位置的距离和角度
     final distance = _position.distance;
@@ -150,7 +137,7 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    final radius = widget.size / 2;
+    final radius = _size / 2;
     const double knobSize = 33.0;
     const double knobRadius = knobSize / 2;
     final maxKnobDistance = radius - knobRadius;
@@ -175,7 +162,7 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
 
         // 计算移动距离，判断是否超过阈值
         final moveDistance = (_initialTouchPosition - localPosition).distance;
-        if (!_hasMoved && moveDistance > widget.moveThreshold) {
+        if (!_hasMoved && moveDistance > _moveThreshold) {
           _hasMoved = true;
         }
 
@@ -212,10 +199,10 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
         _resetKnobPosition();
       },
       child: Container(
-        width: widget.size,
-        height: widget.size,
+        width: _size,
+        height: _size,
         decoration: BoxDecoration(
-          color: widget.backgroundColor,
+          color: Color(0x8038383A),
           shape: BoxShape.circle,
         ),
         child: Stack(
@@ -290,28 +277,28 @@ class ImageDirectionIndicators extends StatelessWidget {
     switch(position) {
       case DirectionPosition.top:
         return Positioned(
-          top: 10,
+          top: 8,
           left: 0,
           right: 0,
           child: Center(child: _buildRotatedArrow(angle)),
         );
       case DirectionPosition.right:
         return Positioned(
-          right: 10,
+          right: 8,
           top: 0,
           bottom: 0,
           child: Center(child: _buildRotatedArrow(angle)),
         );
       case DirectionPosition.bottom:
         return Positioned(
-          bottom: 10,
+          bottom: 8,
           left: 0,
           right: 0,
           child: Center(child: _buildRotatedArrow(angle)),
         );
       case DirectionPosition.left:
         return Positioned(
-          left: 10,
+          left: 8,
           top: 0,
           bottom: 0,
           child: Center(child: _buildRotatedArrow(angle)),
@@ -324,8 +311,8 @@ class ImageDirectionIndicators extends StatelessWidget {
       angle: angle,
       child: Image.asset(
         AnalogStick.arrowImagePath,
-        width: 20,
-        height: 20,
+        width: 18,
+        height: 18,
       ),
     );
   }
@@ -353,7 +340,7 @@ class SoftArcPainter extends CustomPainter {
     // 创建一个带有渐变的画笔
     final gradientPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4
+      ..strokeWidth = 6
       ..strokeCap = StrokeCap.round;
 
     // 使用从起点到终点的渐变
@@ -362,7 +349,7 @@ class SoftArcPainter extends CustomPainter {
       endPoint,
       [
         const Color(0x00409CFF), // 起点透明
-        const Color(0xFF409CFF), // 中点不透明
+        const ui.Color(0xCC409CFF), // 中点半透明
         const Color(0x00409CFF), // 终点透明
       ],
       [0.0, 0.5, 1.0],
@@ -380,9 +367,9 @@ class SoftArcPainter extends CustomPainter {
     // 添加发光效果
     final glowPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4
+      ..strokeWidth = 6
       ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 90.0);
 
     // 使用相同的渐变
     glowPaint.shader = gradientPaint.shader;

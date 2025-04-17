@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'adaptive_width_scroll_bar.dart';
+import 'adaptive_scrollbar.dart';
 
 void main() {
   runApp(const MyApp());
@@ -11,42 +11,36 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Dual ScrollBar Demo',
+      title: 'Dual Scrollbar Demo',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const DualScrollBarDemo(),
+      home: const DualScrollbarDemo(),
     );
   }
 }
 
-class DualScrollBarDemo extends StatefulWidget {
-  const DualScrollBarDemo({super.key});
+class DualScrollbarDemo extends StatefulWidget {
+  const DualScrollbarDemo({super.key});
 
   @override
-  State<DualScrollBarDemo> createState() => _DualScrollBarDemoState();
+  State<DualScrollbarDemo> createState() => _DualScrollbarDemoState();
 }
 
-class _DualScrollBarDemoState extends State<DualScrollBarDemo> {
+class _DualScrollbarDemoState extends State<DualScrollbarDemo> {
   bool _showSingleBar = true;
   bool _primaryHasPriority = true;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('双工具栏优先级 Demo'),
-      ),
       body: Stack(
         children: [
-          // 背景内容
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('工具栏优先级演示', style: TextStyle(fontSize: 18)),
-                const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: () {
                     setState(() {
@@ -70,7 +64,6 @@ class _DualScrollBarDemoState extends State<DualScrollBarDemo> {
             ),
           ),
 
-          // 工具栏容器
           Positioned(
             bottom: 100,
             left: 0,
@@ -79,12 +72,10 @@ class _DualScrollBarDemoState extends State<DualScrollBarDemo> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // 主工具栏
                   _buildPrimaryToolbar(),
 
-                  // 次工具栏 (仅在显示双工具栏时显示)
                   if (!_showSingleBar) ...[
-                    const SizedBox(width: 20), // 两个工具栏之间的间距
+                    const SizedBox(width: 20),
                     _buildSecondaryToolbar(),
                   ],
                 ],
@@ -97,39 +88,37 @@ class _DualScrollBarDemoState extends State<DualScrollBarDemo> {
   }
 
   Widget _buildPrimaryToolbar() {
-    return AdaptiveWidthScrollBar(
-      bottomOffset: 0, // 不需要底部偏移，由外层Positioned控制
-      priority: _primaryHasPriority ? 1 : 2, // 优先级设置
+    return AdaptiveScrollbar(
       children: [
-        AdaptiveIconButton(
+        AdaptiveButton(
           icon: const AssetImage('assets/images/toolbar/audio.png'),
           label: '音频',
           iconAlignment: AdaptiveIconAlignment.top,
           onTap: () => _showSnackBar('音频'),
         ),
-        const ToolbarDivider(),
-        AdaptiveIconButton(
+        const AdaptiveDivider(),
+        AdaptiveButton(
           icon: const AssetImage('assets/images/toolbar/video.png'),
           label: '视频',
           iconAlignment: AdaptiveIconAlignment.bottom,
           onTap: () => _showSnackBar('视频'),
         ),
-        const ToolbarDivider(),
-        AdaptiveIconButton(
+        const AdaptiveDivider(),
+        AdaptiveButton(
           icon: const AssetImage('assets/images/toolbar/photo.png'),
           label: '照片',
           iconAlignment: AdaptiveIconAlignment.left,
           onTap: () => _showSnackBar('照片'),
         ),
-        const ToolbarDivider(),
-        AdaptiveIconButton(
+        const AdaptiveDivider(),
+        AdaptiveButton(
           icon: const AssetImage('assets/images/toolbar/start.png'),
           label: '开始',
           iconAlignment: AdaptiveIconAlignment.right,
           onTap: () => _showSnackBar('开始'),
         ),
-        const ToolbarDivider(),
-        AdaptiveIconButton(
+        const AdaptiveDivider(),
+        AdaptiveButton(
           icon: const AssetImage('assets/images/toolbar/pause.png'),
           label: '暂停',
           iconAlignment: AdaptiveIconAlignment.bottom,
@@ -140,25 +129,23 @@ class _DualScrollBarDemoState extends State<DualScrollBarDemo> {
   }
 
   Widget _buildSecondaryToolbar() {
-    return AdaptiveWidthScrollBar(
-      bottomOffset: 0, // 不需要底部偏移，由外层Positioned控制
-      priority: _primaryHasPriority ? 2 : 1, // 优先级设置
+    return AdaptiveScrollbar(
       children: [
-        AdaptiveIconButton(
+        AdaptiveButton(
           icon: const AssetImage('assets/images/toolbar/resume.png'),
           label: '继续',
           iconAlignment: AdaptiveIconAlignment.bottom,
           onTap: () => _showSnackBar('继续'),
         ),
-        const ToolbarDivider(),
-        AdaptiveIconButton(
+        const AdaptiveDivider(),
+        AdaptiveButton(
           icon: const AssetImage('assets/images/toolbar/more.png'),
           label: '更多',
           iconAlignment: AdaptiveIconAlignment.right,
           onTap: () => _showSnackBar('更多'),
         ),
-        const ToolbarDivider(),
-        AdaptiveIconButton(
+        const AdaptiveDivider(),
+        AdaptiveButton(
           icon: const AssetImage('assets/images/toolbar/audio.png'),
           label: '设置',
           iconAlignment: AdaptiveIconAlignment.top,
