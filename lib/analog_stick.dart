@@ -4,87 +4,153 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+class EmbodyColor {
+  static const Color primary = Color.fromRGBO(64, 156, 255, 1.0);
+  static const Color background = Color.fromRGBO(56, 56, 58, 1.0);
+}
+
+class DualAnalogStick extends StatefulWidget {
+  final Function(Map<String, dynamic>)? onControlChanged;
+
+  const DualAnalogStick({
+    super.key,
+    this.onControlChanged,
+  });
+
+  @override
+  State<DualAnalogStick> createState() => _DualAnalogStickState();
+}
+
+class _DualAnalogStickState extends State<DualAnalogStick> {
+  Offset _leftStickValue = Offset.zero;
+  Offset _rightStickValue = Offset.zero;
+
+  Map<String, dynamic> _generateControlMessage() {
+    return {
+      "linear": {
+        "x": _leftStickValue.dy.toStringAsFixed(2),
+        "y": _leftStickValue.dx.toStringAsFixed(2),
+        "z": "0.00"
+      },
+      "angular": {
+        "x": _rightStickValue.dy.toStringAsFixed(2),
+        "y": "0.00",
+        "z": _rightStickValue.dx.toStringAsFixed(2)
+      }
+    };
+  }
+
+  void _handleLeftStickChanged(Offset offset) {
+    setState(() {
+      _leftStickValue = offset;
+    });
+    if (widget.onControlChanged != null) {
+      widget.onControlChanged!(_generateControlMessage());
+    }
+  }
+
+  void _handleRightStickChanged(Offset offset) {
+    setState(() {
+      _rightStickValue = offset;
+    });
+    if (widget.onControlChanged != null) {
+      widget.onControlChanged!(_generateControlMessage());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: AnalogStick(onPositionChanged: _handleLeftStickChanged),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: AnalogStick(onPositionChanged: _handleRightStickChanged),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class AnalogStick extends StatefulWidget {
   final Function(Offset)? onPositionChanged;
   final bool enableHapticFeedback;
 
-  static const String centerImagePath = 'assets/images/analogstick/center.png';
-  static const String arrowImagePath = 'assets/images/analogstick/arrow_up.png';
-  static const String arcImagePath = 'assets/images/analogstick/arc.png';
-
   const AnalogStick({
-    Key? key,
+    super.key,
     this.onPositionChanged,
     this.enableHapticFeedback = true,
-  }) : super(key: key);
+  });
 
   @override
   State<AnalogStick> createState() => _AnalogStickState();
 }
 
-class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStateMixin {
-  double _size = 120;
+class _AnalogStickState extends State<AnalogStick>
+    with SingleTickerProviderStateMixin {
+  final double _size = 120;
+
   Offset _position = Offset.zero;
   Offset _normalizedPosition = Offset.zero;
-  bool _isDragging = false;
+  Offset _initialTouchPosition = Offset.zero;
+
   late AnimationController _animationController;
   late Animation<Offset> _animation;
+
   double _arcAngle = 0;
-  Offset _initialTouchPosition = Offset.zero;
-  double _moveThreshold = 5.0;
+
+  final double _moveThreshold = 5.0;
   bool _hasMoved = false;
+  bool _isDragging = false;
   bool _reachedEdge = false;
 
   @override
   void initState() {
     super.initState();
+
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    _animation = Tween<Offset>(
-      begin: Offset.zero,
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutBack,
-    ));
+    _animation = Tween<Offset>(begin: Offset.zero, end: Offset.zero).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutBack,
+      ),
+    );
 
     _animation.addListener(() {
       setState(() {
         _position = _animation.value;
-        // 动画过程中不需要通知外部，只需要更新内部状态
+        // No need to notify external during animation, just update internal state
         _updateNormalizedPositionInternal();
       });
     });
   }
 
-  // 添加一个不通知外部的内部更新方法
+  // Internal update method that doesn't notify external
   void _updateNormalizedPositionInternal() {
     const knobRadius = 33.0;
     final maxDistance = (_size / 2) - knobRadius;
 
-    // 计算当前位置的距离和角度
     final distance = _position.distance;
     final angle = _position.direction;
 
-    // 计算归一化距离 (0.0 到 1.0)
     final normalizedDistance = math.min(distance / maxDistance, 1.0);
 
-    // 使用极坐标转换为笛卡尔坐标
-    // 但我们需要确保在对角线方向上也能达到最大值
-    // 例如，当摇杆在45度角方向上达到边缘时，x和y应该都是1.0而不是0.7071
-
-    // 直接映射到[-1,1]x[-1,1]的正方形
     if (_position != Offset.zero) {
-      // 保持方向不变，但确保在任何方向上都能达到最大值
       final dx = normalizedDistance * math.cos(angle);
-      final dy = normalizedDistance * math.sin(angle);
+      final dy = -normalizedDistance * math.sin(angle); // 保持Y轴反转
 
-      // 计算最大分量
       final maxComponent = math.max(dx.abs(), dy.abs());
       if (maxComponent > 0) {
-        // 按最大分量缩放，确保最大分量为1.0
         final scale = normalizedDistance / maxComponent;
         _normalizedPosition = Offset(dx * scale, dy * scale);
       } else {
@@ -97,14 +163,13 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
     if (_position != Offset.zero) {
       _arcAngle = angle;
     }
-    // 不通知外部
   }
 
-  // 原方法保持不变，但只在拖动时调用
+  // Original method remains but only called during dragging
   void _updateNormalizedPosition() {
     _updateNormalizedPositionInternal();
 
-    // 通知位置变化 - 只在拖动状态下才通知外部
+    // Notify position change - only notify external during dragging
     if (widget.onPositionChanged != null && _isDragging) {
       widget.onPositionChanged!(_normalizedPosition);
     }
@@ -118,18 +183,17 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
 
   void _resetKnobPosition() {
     if (!_isDragging) {
-      // 在动画开始前先发送一次零位置
+      // Send a zero position before starting the animation
       if (widget.onPositionChanged != null && _position != Offset.zero) {
         widget.onPositionChanged!(Offset.zero);
       }
 
-      _animation = Tween<Offset>(
-        begin: _position,
-        end: Offset.zero,
-      ).animate(CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeOutBack,
-      ));
+      _animation = Tween<Offset>(begin: _position, end: Offset.zero).animate(
+        CurvedAnimation(
+          parent: _animationController,
+          curve: Curves.easeOutBack,
+        ),
+      );
       _animationController.reset();
       _animationController.forward();
     }
@@ -151,27 +215,33 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
         _hasMoved = false;
         final RenderBox renderBox = context.findRenderObject() as RenderBox;
         final center = Offset(radius, radius);
-        _initialTouchPosition = renderBox.globalToLocal(details.globalPosition) - center;
+        _initialTouchPosition =
+            renderBox.globalToLocal(details.globalPosition) - center;
         setState(() {});
       },
-
       onPanUpdate: (details) {
         final RenderBox renderBox = context.findRenderObject() as RenderBox;
         final center = Offset(radius, radius);
-        final localPosition = renderBox.globalToLocal(details.globalPosition) - center;
+        final localPosition =
+            renderBox.globalToLocal(details.globalPosition) - center;
 
-        // 计算移动距离，判断是否超过阈值
+        // 移除这行
+        // final invertedPosition = Offset(localPosition.dx, -localPosition.dy);
+
+        // Calculate movement distance and check if it exceeds the threshold
         final moveDistance = (_initialTouchPosition - localPosition).distance;
         if (!_hasMoved && moveDistance > _moveThreshold) {
           _hasMoved = true;
         }
 
-        // 只有当确认移动时才更新位置
+        // Only update position when movement is confirmed
         if (_hasMoved) {
-          // 限制在圆形范围内，考虑中心键的大小
+          // Limit within circular range, considering the size of center knob
           final distance = localPosition.distance;
 
-          if (widget.enableHapticFeedback && distance > maxKnobDistance * 0.95 && !_reachedEdge) {
+          if (widget.enableHapticFeedback &&
+              distance > maxKnobDistance * 0.95 &&
+              !_reachedEdge) {
             HapticFeedback.mediumImpact();
             _reachedEdge = true;
           } else if (distance <= maxKnobDistance * 0.9) {
@@ -179,9 +249,11 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
           }
 
           if (distance > maxKnobDistance) {
-            _position = localPosition * (maxKnobDistance / distance);
+            _position = localPosition *
+                (maxKnobDistance /
+                    distance); // 使用localPosition而不是invertedPosition
           } else {
-            _position = localPosition;
+            _position = localPosition; // 使用localPosition而不是invertedPosition
           }
 
           _updateNormalizedPosition();
@@ -202,25 +274,19 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
         width: _size,
         height: _size,
         decoration: BoxDecoration(
-          color: Color(0x8038383A),
+          color: EmbodyColor.background.withAlpha(128),
           shape: BoxShape.circle,
         ),
         child: Stack(
           children: [
-            Positioned.fill(
-              child: ImageDirectionIndicators(),
-            ),
+            Positioned.fill(child: buildDirectionIndicators()),
             if (_isDragging && _position != Offset.zero)
-              Positioned.fill(
-                child: ImageArc(
-                  angle: _arcAngle,
-                ),
-              ),
+              Positioned.fill(child: ImageArc(angle: _arcAngle)),
             Positioned(
               left: radius + _position.dx - knobRadius,
               top: radius + _position.dy - knobRadius,
               child: Image.asset(
-                AnalogStick.centerImagePath,
+                'assets/images/analog_stick/center.png',
                 width: knobSize,
                 height: knobSize,
                 fit: BoxFit.contain,
@@ -231,88 +297,44 @@ class _AnalogStickState extends State<AnalogStick> with SingleTickerProviderStat
       ),
     );
   }
+
+Widget buildDirectionIndicators() {
+  final indicators = [
+    {'alignment': Alignment(0, -0.88), 'angle': 0.0},
+    {'alignment': Alignment(0.88, 0), 'angle': math.pi/2},
+    {'alignment': Alignment(0, 0.88), 'angle': math.pi},
+    {'alignment': Alignment(-0.88, 0), 'angle': -math.pi/2},
+  ];
+
+  return Stack(
+    children: indicators.map((indicator) {
+      return Align(
+        alignment: indicator['alignment'] as Alignment,
+        child: Transform.rotate(
+          angle: indicator['angle'] as double,
+          child: Image.asset(
+            'assets/images/analog_stick/arrow_up.png',
+            width: 18,
+            height: 18,
+          ),
+        ),
+      );
+    }).toList(),
+  );
+}
 }
 
 class ImageArc extends StatelessWidget {
   final double angle;
-  const ImageArc({Key? key, required this.angle}) : super(key: key);
+  const ImageArc({super.key, required this.angle});
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       painter: SoftArcPainter(
         angle: angle,
-        color: const Color(0xFF409CFF),
+        color: EmbodyColor.primary,
         radius: 60,
-      ),
-    );
-  }
-}
-
-enum DirectionPosition { top, right, bottom, left }
-
-class ImageDirectionIndicators extends StatelessWidget {
-  const ImageDirectionIndicators({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final directions = [
-      {'position': DirectionPosition.top, 'angle': 0.0},
-      {'position': DirectionPosition.right, 'angle': math.pi / 2},
-      {'position': DirectionPosition.bottom, 'angle': math.pi},
-      {'position': DirectionPosition.left, 'angle': -math.pi / 2},
-    ];
-
-    return Stack(
-      children: directions.map((direction) {
-        final position = direction['position'] as DirectionPosition;
-        final angle = direction['angle'] as double;
-
-        return _positionArrow(position, angle);
-      }).toList(),
-    );
-  }
-
-  Widget _positionArrow(DirectionPosition position, double angle) {
-    switch(position) {
-      case DirectionPosition.top:
-        return Positioned(
-          top: 8,
-          left: 0,
-          right: 0,
-          child: Center(child: _buildRotatedArrow(angle)),
-        );
-      case DirectionPosition.right:
-        return Positioned(
-          right: 8,
-          top: 0,
-          bottom: 0,
-          child: Center(child: _buildRotatedArrow(angle)),
-        );
-      case DirectionPosition.bottom:
-        return Positioned(
-          bottom: 8,
-          left: 0,
-          right: 0,
-          child: Center(child: _buildRotatedArrow(angle)),
-        );
-      case DirectionPosition.left:
-        return Positioned(
-          left: 8,
-          top: 0,
-          bottom: 0,
-          child: Center(child: _buildRotatedArrow(angle)),
-        );
-    }
-  }
-
-  Widget _buildRotatedArrow(double angle) {
-    return Transform.rotate(
-      angle: angle,
-      child: Image.asset(
-        AnalogStick.arrowImagePath,
-        width: 18,
-        height: 18,
       ),
     );
   }
@@ -323,39 +345,44 @@ class SoftArcPainter extends CustomPainter {
   final Color color;
   final double radius;
 
-  SoftArcPainter({required this.angle, required this.color, required this.radius});
+  SoftArcPainter({
+    required this.angle,
+    required this.color,
+    required this.radius,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 使用缓存的计算结果
+    // Use cached calculation results
     final center = Offset(size.width / 2, size.height / 2);
     final arcRadius = radius - 2;
 
     final startAngle = angle - (45 * math.pi / 180);
     const sweepAngle = 0.25 * 2 * math.pi;
 
-    final startPoint = _calculatePointOnCircle(center, arcRadius, startAngle);
-    final endPoint = _calculatePointOnCircle(center, arcRadius, startAngle + sweepAngle);
+    final startPoint = calculatePointOnCircle(center, arcRadius, startAngle);
+    final endPoint =
+        calculatePointOnCircle(center, arcRadius, startAngle + sweepAngle);
 
-    // 创建一个带有渐变的画笔
+    // Create a paint with gradient
     final gradientPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6
       ..strokeCap = StrokeCap.round;
 
-    // 使用从起点到终点的渐变
+    // Use gradient from start to end point
     gradientPaint.shader = ui.Gradient.linear(
       startPoint,
       endPoint,
       [
-        const Color(0x00409CFF), // 起点透明
-        const ui.Color(0xCC409CFF), // 中点半透明
-        const Color(0x00409CFF), // 终点透明
+        EmbodyColor.primary.withAlpha(0), // Start point transparent
+        EmbodyColor.primary.withAlpha(200), // Mid point semi-transparent
+        EmbodyColor.primary.withAlpha(0), // End point transparent
       ],
       [0.0, 0.5, 1.0],
     );
 
-    // 绘制弧光
+    // Draw arc glow
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: arcRadius),
       startAngle,
@@ -364,14 +391,14 @@ class SoftArcPainter extends CustomPainter {
       gradientPaint,
     );
 
-    // 添加发光效果
+    // Add glow effect
     final glowPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6
       ..strokeCap = StrokeCap.round
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 90.0);
 
-    // 使用相同的渐变
+    // Use same gradient
     glowPaint.shader = gradientPaint.shader;
 
     canvas.drawArc(
@@ -383,50 +410,15 @@ class SoftArcPainter extends CustomPainter {
     );
   }
 
-  Offset _calculatePointOnCircle(Offset center, double radius, double angle) {
+  Offset calculatePointOnCircle(Offset center, double radius, double angle) {
     return Offset(
       center.dx + radius * math.cos(angle),
-      center.dy + radius * math.sin(angle)
+      center.dy + radius * math.sin(angle),
     );
   }
 
   @override
   bool shouldRepaint(SoftArcPainter oldDelegate) {
-    return oldDelegate.angle != angle; // 只有角度变化时才重绘
-  }
-}
-
-class DualAnalogStickController extends StatelessWidget {
-  final Function(Offset)? onLeftStickChanged;
-  final Function(Offset)? onRightStickChanged;
-
-  const DualAnalogStickController({
-    Key? key,
-    this.onLeftStickChanged,
-    this.onRightStickChanged,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: AnalogStick(
-              onPositionChanged: onLeftStickChanged,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: AnalogStick(
-              onPositionChanged: onRightStickChanged,
-            ),
-          ),
-        ],
-      ),
-    );
+    return oldDelegate.angle != angle; // Only repaint when angle changes
   }
 }
