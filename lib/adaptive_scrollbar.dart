@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -6,6 +5,7 @@ import 'package:flutter/material.dart';
 class EmbodyColor {
   static const Color primary = Color.fromRGBO(64, 156, 255, 1.0);
   static const Color background = Color.fromRGBO(56, 56, 58, 1.0);
+  static const Color gray3 = Color.fromRGBO(199, 199, 204, 1.0);
 }
 
 enum AdaptiveIconAlignment { left, right, top, bottom }
@@ -33,35 +33,26 @@ class AdaptiveButton extends StatelessWidget {
     this.spacing = 4,
     this.padding = const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
   }) : assert(
-         icon != null || label != null,
-         'At least icon or label is required',
-       );
+          icon != null || label != null,
+          'At least icon or label is required',
+        );
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(padding: padding, child: _buildContent()),
-    );
-  }
+    final iconWidget = icon != null
+        ? Image(image: icon!, width: iconSize, height: iconSize)
+        : null;
+    final labelWidget = label != null
+        ? Text(
+            label!,
+            style: TextStyle(fontSize: fontSize, color: textColor),
+          )
+        : null;
 
-  Widget _buildContent() {
-    final iconWidget =
-        icon != null
-            ? Image(image: icon!, width: iconSize, height: iconSize)
-            : null;
-
-    final labelWidget =
-        label != null
-            ? Text(
-              label!,
-              style: TextStyle(fontSize: fontSize, color: textColor),
-            )
-            : null;
-
+    Widget content;
     switch (iconAlignment) {
       case AdaptiveIconAlignment.top:
-        return Column(
+        content = Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (iconWidget != null) iconWidget,
@@ -70,8 +61,9 @@ class AdaptiveButton extends StatelessWidget {
             if (labelWidget != null) labelWidget,
           ],
         );
+        break;
       case AdaptiveIconAlignment.bottom:
-        return Column(
+        content = Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (labelWidget != null) labelWidget,
@@ -80,8 +72,9 @@ class AdaptiveButton extends StatelessWidget {
             if (iconWidget != null) iconWidget,
           ],
         );
+        break;
       case AdaptiveIconAlignment.left:
-        return Row(
+        content = Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (iconWidget != null) iconWidget,
@@ -90,8 +83,9 @@ class AdaptiveButton extends StatelessWidget {
             if (labelWidget != null) labelWidget,
           ],
         );
+        break;
       case AdaptiveIconAlignment.right:
-        return Row(
+        content = Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (labelWidget != null) labelWidget,
@@ -101,6 +95,11 @@ class AdaptiveButton extends StatelessWidget {
           ],
         );
     }
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(padding: padding, child: content),
+    );
   }
 }
 
@@ -117,7 +116,7 @@ class AdaptiveDivider extends StatelessWidget {
       child: VerticalDivider(
         width: width,
         thickness: 1,
-        color: const Color(0xFFC7C7CB),
+        color: EmbodyColor.gray3,
       ),
     );
   }
@@ -135,8 +134,11 @@ class AdaptiveScrollbar extends StatefulWidget {
 class _AdaptiveScrollbarState extends State<AdaptiveScrollbar> {
   final ScrollController _scrollController = ScrollController();
 
-  bool _canScrollLeft = false;
-  bool _canScrollRight = true;
+  bool _isScrollable = false;
+  bool _canScrollForward = false;
+  bool _canScrollBackward = false;
+
+  double _lastKnownWidth = -1.0;
 
   final double _horizontalPadding = 12.0;
   final double _verticalPadding = 8.0;
@@ -144,7 +146,23 @@ class _AdaptiveScrollbarState extends State<AdaptiveScrollbar> {
   @override
   void initState() {
     super.initState();
+
     _scrollController.addListener(_updateScrollIndicators);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateScrollIndicators();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant AdaptiveScrollbar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.children.length != oldWidget.children.length ||
+        widget.children != oldWidget.children) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _updateScrollIndicators();
+      });
+    }
   }
 
   @override
@@ -154,33 +172,58 @@ class _AdaptiveScrollbarState extends State<AdaptiveScrollbar> {
     super.dispose();
   }
 
-  // 更新滚动指示器状态
   void _updateScrollIndicators() {
-    if (!mounted) return;
+    if (!_scrollController.hasClients) {
+      return;
+    }
 
-    const double threshold = 0.01;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.position.pixels;
+    final position = _scrollController.position;
+    final newIsScrollable = position.maxScrollExtent > position.minScrollExtent;
+    final newCanScrollForward = position.pixels < position.maxScrollExtent;
+    final newCanScrollBackward = position.pixels > position.minScrollExtent;
 
-    final newCanScrollLeft = maxScroll > 0 && currentScroll > threshold;
-    final newCanScrollRight =
-        maxScroll > 0 && currentScroll < (maxScroll - threshold);
-
-    if (newCanScrollLeft != _canScrollLeft ||
-        newCanScrollRight != _canScrollRight) {
+    if (newIsScrollable != _isScrollable ||
+        newCanScrollForward != _canScrollForward ||
+        newCanScrollBackward != _canScrollBackward) {
       setState(() {
-        _canScrollLeft = newCanScrollLeft;
-        _canScrollRight = newCanScrollRight;
+        _isScrollable = newIsScrollable;
+        _canScrollForward = newCanScrollForward;
+        _canScrollBackward = newCanScrollBackward;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Align(alignment: Alignment.center, child: _buildToolbar());
-  }
+    Widget buildArrowIndicator(
+        {required bool isVisible, required bool isLeftArrow}) {
+      if (!isVisible) {
+        return SizedBox(width: 16 + 4 * 2);
+      }
+      return Container(
+        padding: EdgeInsets.all(4),
+        decoration: BoxDecoration(
+            color: EmbodyColor.background.withAlpha(180),
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(50),
+                blurRadius: 2,
+                offset: Offset(0, 1),
+              )
+            ]),
+        child: Image(
+          image: AssetImage(
+            isLeftArrow
+                ? 'assets/images/adaptive_scrollbar/arrow_left.png'
+                : 'assets/images/adaptive_scrollbar/arrow_right.png',
+          ),
+          width: 16,
+          height: 16,
+        ),
+      );
+    }
 
-  Widget _buildToolbar() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
@@ -199,136 +242,58 @@ class _AdaptiveScrollbarState extends State<AdaptiveScrollbar> {
                 horizontal: _horizontalPadding,
                 vertical: _verticalPadding,
               ),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final childrenWidth = _calculateChildrenWidth();
-                  final availableWidth = constraints.maxWidth;
-                  final needsScrolling =
-                      childrenWidth > availableWidth + _horizontalPadding * 2;
+              child: LayoutBuilder(builder: (context, constraints) {
+                final currentWidth = constraints.maxWidth;
+                if ((currentWidth - _lastKnownWidth).abs() > 0.1) {
+                  _lastKnownWidth = currentWidth;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _updateScrollIndicators();
+                  });
+                }
 
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      SingleChildScrollView(
-                        controller: _scrollController,
-                        scrollDirection: Axis.horizontal,
-                        physics:
-                            needsScrolling
-                                ? const BouncingScrollPhysics()
-                                : const NeverScrollableScrollPhysics(),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: widget.children,
-                        ),
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SingleChildScrollView(
+                      controller: _scrollController,
+                      scrollDirection: Axis.horizontal,
+                      physics: _isScrollable
+                          ? const BouncingScrollPhysics()
+                          : const NeverScrollableScrollPhysics(),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: widget.children,
                       ),
-                      if (needsScrolling)
-                        Positioned(
-                          left: 0,
-                          right: 0,
+                    ),
+                    if (_isScrollable)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        child: IgnorePointer(
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              if (_canScrollLeft)
-                                Container(
-                                  padding: EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: EmbodyColor.background.withAlpha(
-                                      200,
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Image(
-                                    image: AssetImage(
-                                      'assets/images/adaptive_scrollbar/arrow_left.png',
-                                    ),
-                                    width: 16,
-                                    height: 16,
-                                  ),
-                                )
-                              else
-                                SizedBox(width: 24),
-                              if (_canScrollRight)
-                                Container(
-                                  padding: EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: EmbodyColor.background.withAlpha(
-                                      200,
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Image(
-                                    image: AssetImage(
-                                      'assets/images/adaptive_scrollbar/arrow_right.png',
-                                    ),
-                                    width: 16,
-                                    height: 16,
-                                  ),
-                                )
-                              else
-                                SizedBox(width: 24),
+                              buildArrowIndicator(
+                                isVisible: _canScrollBackward,
+                                isLeftArrow: true,
+                              ),
+                              buildArrowIndicator(
+                                isVisible: _canScrollForward,
+                                isLeftArrow: false,
+                              ),
                             ],
                           ),
-                        )
-                      else
-                        SizedBox.shrink(),
-                    ],
-                  );
-                },
-              ),
+                        ),
+                      )
+                    else
+                      SizedBox.shrink(),
+                  ],
+                );
+              }),
             ),
           ),
         ),
       ),
     );
-  }
-
-  double _calculateChildrenWidth() {
-    if (!mounted) return 0;
-
-    double totalWidth = _horizontalPadding * 2;
-
-    for (var child in widget.children) {
-      if (child is AdaptiveButton) {
-        double buttonWidth = 0;
-        bool hasIcon = child.icon != null;
-        bool hasLabel = child.label != null;
-
-        if (hasLabel) {
-          final textPainter = TextPainter(
-            text: TextSpan(
-              text: child.label,
-              style: TextStyle(fontSize: child.fontSize),
-            ),
-            textDirection: TextDirection.ltr,
-            maxLines: 1,
-          )..layout();
-          final textWidth = (textPainter.width * 2).roundToDouble() / 2;
-
-          switch (child.iconAlignment) {
-            case AdaptiveIconAlignment.left:
-            case AdaptiveIconAlignment.right:
-              buttonWidth =
-                  child.padding.horizontal +
-                  textWidth +
-                  (hasIcon ? (child.spacing + child.iconSize) : 0);
-              break;
-            case AdaptiveIconAlignment.top:
-            case AdaptiveIconAlignment.bottom:
-              buttonWidth = max(
-                child.padding.horizontal + (hasIcon ? child.iconSize : 0),
-                child.padding.horizontal + textWidth,
-              );
-              break;
-          }
-        } else {
-          buttonWidth = child.padding.horizontal + child.iconSize;
-        }
-        totalWidth += buttonWidth;
-      } else if (child is AdaptiveDivider) {
-        totalWidth += child.width;
-      }
-    }
-
-    return totalWidth;
   }
 }

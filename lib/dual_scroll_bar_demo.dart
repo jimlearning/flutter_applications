@@ -91,35 +91,35 @@ class _DualScrollbarDemoState extends State<DualScrollbarDemo> {
     return AdaptiveScrollbar(
       children: [
         AdaptiveButton(
-          icon: const AssetImage('assets/images/toolbar/audio.png'),
+          icon: const AssetImage('assets/images/adaptive_scrollbar/audio.png'),
           label: '音频',
           iconAlignment: AdaptiveIconAlignment.top,
           onTap: () => _showSnackBar('音频'),
         ),
         const AdaptiveDivider(),
         AdaptiveButton(
-          icon: const AssetImage('assets/images/toolbar/video.png'),
+          icon: const AssetImage('assets/images/adaptive_scrollbar/video.png'),
           label: '视频',
           iconAlignment: AdaptiveIconAlignment.bottom,
           onTap: () => _showSnackBar('视频'),
         ),
         const AdaptiveDivider(),
         AdaptiveButton(
-          icon: const AssetImage('assets/images/toolbar/photo.png'),
+          icon: const AssetImage('assets/images/adaptive_scrollbar/photo.png'),
           label: '照片',
           iconAlignment: AdaptiveIconAlignment.left,
           onTap: () => _showSnackBar('照片'),
         ),
         const AdaptiveDivider(),
         AdaptiveButton(
-          icon: const AssetImage('assets/images/toolbar/start.png'),
+          icon: const AssetImage('assets/images/adaptive_scrollbar/start.png'),
           label: '开始',
           iconAlignment: AdaptiveIconAlignment.right,
           onTap: () => _showSnackBar('开始'),
         ),
         const AdaptiveDivider(),
         AdaptiveButton(
-          icon: const AssetImage('assets/images/toolbar/pause.png'),
+          icon: const AssetImage('assets/images/adaptive_scrollbar/pause.png'),
           label: '暂停',
           iconAlignment: AdaptiveIconAlignment.bottom,
           onTap: () => _showSnackBar('暂停'),
@@ -132,21 +132,21 @@ class _DualScrollbarDemoState extends State<DualScrollbarDemo> {
     return AdaptiveScrollbar(
       children: [
         AdaptiveButton(
-          icon: const AssetImage('assets/images/toolbar/resume.png'),
+          icon: const AssetImage('assets/images/adaptive_scrollbar/resume.png'),
           label: '继续',
           iconAlignment: AdaptiveIconAlignment.bottom,
           onTap: () => _showSnackBar('继续'),
         ),
         const AdaptiveDivider(),
         AdaptiveButton(
-          icon: const AssetImage('assets/images/toolbar/more.png'),
+          icon: const AssetImage('assets/images/adaptive_scrollbar/more.png'),
           label: '更多',
           iconAlignment: AdaptiveIconAlignment.right,
           onTap: () => _showSnackBar('更多'),
         ),
         const AdaptiveDivider(),
         AdaptiveButton(
-          icon: const AssetImage('assets/images/toolbar/audio.png'),
+          icon: const AssetImage('assets/images/adaptive_scrollbar/audio.png'),
           label: '设置',
           iconAlignment: AdaptiveIconAlignment.top,
           onTap: () => _showSnackBar('设置'),
